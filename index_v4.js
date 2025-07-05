@@ -36,6 +36,51 @@ const loginPage = `
       border-color: #667eea;
       box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25);
     }
+    
+    /* 手機響應式優化 */
+    @media (max-width: 640px) {
+      .login-box {
+        margin: 1rem;
+        padding: 1.5rem;
+      }
+      
+      .table-container {
+        margin: 0 -1rem;
+      }
+      
+      .toast {
+        right: 10px;
+        left: 10px;
+        transform: translateY(-100px);
+        transition: transform 0.3s ease;
+      }
+      
+      .toast.show {
+        transform: translateY(0);
+      }
+      
+      .modal-content {
+        max-height: 90vh;
+        margin: 1rem;
+      }
+    }
+
+    /* 表格行動版優化 */
+    @media (max-width: 768px) {
+      .table-container table {
+        font-size: 0.875rem;
+      }
+      
+      .table-container th,
+      .table-container td {
+        padding: 0.5rem 0.75rem;
+      }
+      
+      .action-buttons {
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+    }
   </style>
 </head>
 <body class="login-container flex items-center justify-center">
@@ -184,7 +229,8 @@ const adminPage = `
     </div>
     
     <div class="table-container bg-white rounded-lg overflow-hidden">
-      <table class="min-w-full divide-y divide-gray-200">
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名稱</th>
@@ -200,12 +246,13 @@ const adminPage = `
         <tbody id="subscriptionsBody" class="bg-white divide-y divide-gray-200">
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 
   <!-- 添加/編輯訂閱的模態框 -->
   <div id="subscriptionModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 modal-container hidden flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-screen overflow-y-auto">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-2 sm:mx-4 max-h-screen overflow-y-auto">
       <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 rounded-t-lg">
         <div class="flex items-center justify-between">
           <h3 id="modalTitle" class="text-lg font-medium text-gray-900">添加新訂閱</h3>
@@ -469,7 +516,7 @@ const adminPage = `
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap">' + statusHtml + '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium">' +
-              '<div class="flex flex-wrap gap-1">' +
+              '<div class="flex flex-wrap gap-1 action-buttons">' +
                 '<button class="edit btn-primary text-white px-2 py-1 rounded text-xs" data-id="' + subscription.id + '"><i class="fas fa-edit mr-1"></i>編輯</button>' +
                 '<button class="test-notify btn-info text-white px-2 py-1 rounded text-xs" data-id="' + subscription.id + '"><i class="fas fa-paper-plane mr-1"></i>測試</button>' +
                 '<button class="delete btn-danger text-white px-2 py-1 rounded text-xs" data-id="' + subscription.id + '"><i class="fas fa-trash-alt mr-1"></i>删除</button>' +
