@@ -1045,6 +1045,9 @@ const adminPage = `
         
         if (response.ok) {
           showToast('删除成功', 'success');
+          // 重置按鈕狀態
+          button.innerHTML = originalContent;
+          button.disabled = false;
           // 關閉編輯 Modal，因為訂閱已被刪除
           document.getElementById('subscriptionModal').classList.add('hidden');
           loadSubscriptions();
