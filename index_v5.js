@@ -300,6 +300,10 @@ const adminPage = `
               <option value="CNY">人民幣 (CNY)</option>
               <option value="JPY">日圓 (JPY)</option>
             </select>
+            <div id="exchangeRateDisplay" class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700" style="display: none;">
+              <i class="fas fa-exchange-alt mr-1"></i>
+              <span id="exchangeRateText">等待匯率資料...</span>
+            </div>
             <div class="error-message text-red-500"></div>
           </div>
         </div>
@@ -469,11 +473,105 @@ const adminPage = `
       return isValid;
     }
 
+    // 匯率管理功能
+    let exchangeRates = null;
+    let baseCurrency = 'TWD'; // 預設顯示貨幣
+    
+    async function fetchExchangeRates() {
+      try {
+        const response = await fetch('/api/currency/rates');
+        const data = await response.json();
+        
+        if (data.success) {
+          exchangeRates = data.data;
+          return exchangeRates;
+        } else {
+          console.error('獲取匯率失敗:', data.message);
+          return null;
+        }
+      } catch (error) {
+        console.error('獲取匯率錯誤:', error);
+        return null;
+      }
+    }
+    
+    function convertCurrency(amount, fromCurrency, toCurrency) {
+      if (!exchangeRates || !exchangeRates.rates) return null;
+      if (fromCurrency === toCurrency) return amount;
+      
+      const rates = exchangeRates.rates;
+      let convertedAmount;
+      
+      if (fromCurrency === 'USD') {
+        convertedAmount = amount * rates[toCurrency];
+      } else if (toCurrency === 'USD') {
+        convertedAmount = amount / rates[fromCurrency];
+      } else {
+        // 先轉換到 USD，再轉換到目標貨幣
+        const usdAmount = amount / rates[fromCurrency];
+        convertedAmount = usdAmount * rates[toCurrency];
+      }
+      
+      return parseFloat(convertedAmount.toFixed(2));
+    }
+    
+    function formatPriceWithConversion(price, currency) {
+      if (!price) return '未設定';
+      
+      const originalPrice = price.toFixed(2) + ' ' + currency;
+      
+      if (!exchangeRates || currency === baseCurrency) {
+        return originalPrice;
+      }
+      
+      const convertedPrice = convertCurrency(price, currency, baseCurrency);
+      if (convertedPrice !== null) {
+        return originalPrice + ' (≈ ' + convertedPrice.toFixed(2) + ' ' + baseCurrency + ')';
+      }
+      
+      return originalPrice;
+    }
+    
+    function updateExchangeRateDisplay() {
+      const priceInput = document.getElementById('price');
+      const currencySelect = document.getElementById('currency');
+      const exchangeRateDisplay = document.getElementById('exchangeRateDisplay');
+      const exchangeRateText = document.getElementById('exchangeRateText');
+      
+      if (!priceInput || !currencySelect || !exchangeRateDisplay || !exchangeRateText) {
+        return;
+      }
+      
+      const price = parseFloat(priceInput.value);
+      const currency = currencySelect.value;
+      
+      if (!price || !currency || !exchangeRates) {
+        exchangeRateDisplay.style.display = 'none';
+        return;
+      }
+      
+      if (currency === baseCurrency) {
+        exchangeRateDisplay.style.display = 'none';
+        return;
+      }
+      
+      const convertedPrice = convertCurrency(price, currency, baseCurrency);
+      if (convertedPrice !== null) {
+        exchangeRateText.textContent = '約 ' + convertedPrice.toFixed(2) + ' ' + baseCurrency + ' (匯率: 1 ' + currency + ' = ' + (convertCurrency(1, currency, baseCurrency) || 0).toFixed(4) + ' ' + baseCurrency + ')';
+        exchangeRateDisplay.style.display = 'block';
+      } else {
+        exchangeRateDisplay.style.display = 'none';
+      }
+    }
+
     // 獲取所有訂閱並按到期時間排序
     async function loadSubscriptions() {
       try {
         const tbody = document.getElementById('subscriptionsBody');
         tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>加載中...</td></tr>';
+        
+        // 先獲取匯率資料
+        await fetchExchangeRates();
         
         const response = await fetch('/api/subscriptions');
         const data = await response.json();
@@ -486,13 +584,17 @@ const adminPage = `
         }
         
         // 按到期時間升序排序（最早到期的在前）
-        data.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+        data.sort((a, b) => {
+          const aExpiry = a.currentPlan?.expiryDate || a.expiryDate;
+          const bExpiry = b.currentPlan?.expiryDate || b.expiryDate;
+          return new Date(aExpiry) - new Date(bExpiry);
+        });
         
         data.forEach(subscription => {
           const row = document.createElement('tr');
           row.className = subscription.isActive === false ? 'hover:bg-gray-50 bg-gray-100' : 'hover:bg-gray-50';
           
-          const expiryDate = new Date(subscription.expiryDate);
+          const expiryDate = new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate);
           const now = new Date();
           const daysDiff = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
           
@@ -529,14 +631,14 @@ const adminPage = `
               (periodText ? '<div class="text-xs text-gray-500">周期: ' + periodText + autoRenewIcon + '</div>' : '') +
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap">' + 
-              '<div class="text-sm text-gray-900">' + new Date(subscription.expiryDate).toLocaleDateString() + '</div>' +
+              '<div class="text-sm text-gray-900">' + new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate).toLocaleDateString() + '</div>' +
               '<div class="text-xs text-gray-500">' + (daysDiff < 0 ? '已過期' + Math.abs(daysDiff) + '天' : '還剩' + daysDiff + '天') + '</div>' +
-              (subscription.startDate ? '<div class="text-xs text-gray-500">開始: ' + new Date(subscription.startDate).toLocaleDateString() + '</div>' : '') +
+              ((subscription.currentPlan?.startDate || subscription.startDate) ? '<div class="text-xs text-gray-500">開始: ' + new Date(subscription.currentPlan?.startDate || subscription.startDate).toLocaleDateString() + '</div>' : '') +
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap">' + 
               '<div class="text-sm text-gray-900">' + 
                 '<i class="fas fa-dollar-sign mr-1"></i>' + 
-                (subscription.price ? subscription.price.toFixed(2) + ' ' + (subscription.currency || 'TWD') : '未設定') + 
+                formatPriceWithConversion(subscription.currentPlan?.price || subscription.price, subscription.currentPlan?.currency || subscription.currency || 'TWD') + 
               '</div>' +
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">' + 
@@ -639,7 +741,7 @@ const adminPage = `
       }
     }
     
-    document.getElementById('addSubscriptionBtn').addEventListener('click', () => {
+    document.getElementById('addSubscriptionBtn').addEventListener('click', async () => {
       document.getElementById('modalTitle').textContent = '添加新訂閱';
       document.getElementById('subscriptionModal').classList.remove('hidden');
       
@@ -657,6 +759,10 @@ const adminPage = `
       
       calculateExpiryDate();
       setupModalEventListeners();
+      
+      // 獲取匯率並更新顯示
+      await fetchExchangeRates();
+      updateExchangeRateDisplay();
     });
     
     function setupModalEventListeners() {
@@ -667,6 +773,17 @@ const adminPage = `
         const element = document.getElementById(id);
         element.removeEventListener('change', calculateExpiryDate);
         element.addEventListener('change', calculateExpiryDate);
+      });
+      
+      // 添加價格和貨幣變更監聽器
+      ['price', 'currency'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+          element.removeEventListener('input', updateExchangeRateDisplay);
+          element.removeEventListener('change', updateExchangeRateDisplay);
+          element.addEventListener('input', updateExchangeRateDisplay);
+          element.addEventListener('change', updateExchangeRateDisplay);
+        }
       });
       
       document.getElementById('cancelBtn').addEventListener('click', () => {
@@ -778,17 +895,21 @@ const adminPage = `
           document.getElementById('notes').value = subscription.notes || '';
           document.getElementById('isActive').checked = subscription.isActive !== false;
           document.getElementById('autoRenew').checked = subscription.autoRenew !== false;
-          document.getElementById('startDate').value = subscription.startDate ? subscription.startDate.split('T')[0] : '';
-          document.getElementById('expiryDate').value = subscription.expiryDate ? subscription.expiryDate.split('T')[0] : '';
-          document.getElementById('periodValue').value = subscription.periodValue || 1;
-          document.getElementById('periodUnit').value = subscription.periodUnit || 'month';
+          document.getElementById('startDate').value = (subscription.currentPlan?.startDate || subscription.startDate) ? (subscription.currentPlan?.startDate || subscription.startDate).split('T')[0] : '';
+          document.getElementById('expiryDate').value = (subscription.currentPlan?.expiryDate || subscription.expiryDate) ? (subscription.currentPlan?.expiryDate || subscription.expiryDate).split('T')[0] : '';
+          document.getElementById('periodValue').value = subscription.currentPlan?.periodValue || subscription.periodValue || 1;
+          document.getElementById('periodUnit').value = subscription.currentPlan?.periodUnit || subscription.periodUnit || 'month';
           document.getElementById('reminderDays').value = subscription.reminderDays !== undefined ? subscription.reminderDays : 7;
-          document.getElementById('price').value = subscription.price || 0;
-          document.getElementById('currency').value = subscription.currency || 'TWD';
+          document.getElementById('price').value = subscription.currentPlan?.price || subscription.price || 0;
+          document.getElementById('currency').value = subscription.currentPlan?.currency || subscription.currency || 'TWD';
           
           clearFieldErrors();
           document.getElementById('subscriptionModal').classList.remove('hidden');
           setupModalEventListeners();
+          
+          // 獲取匯率並更新顯示
+          await fetchExchangeRates();
+          updateExchangeRateDisplay();
         }
       } catch (error) {
         console.error('獲取訂閱信息失敗:', error);
@@ -1329,6 +1450,157 @@ const api = {
       }
     }
     
+    // Currency exchange rate endpoints
+    if (path === '/currency/rates' && method === 'GET') {
+      try {
+        // 首先嘗試從 KV 獲取緩存的匯率
+        const cachedRates = await env.SUBSCRIPTIONS_KV.get('currency_rates');
+        
+        if (cachedRates) {
+          const ratesData = JSON.parse(cachedRates);
+          const now = new Date();
+          const lastUpdated = new Date(ratesData.lastUpdated);
+          const hoursDiff = (now - lastUpdated) / (1000 * 60 * 60);
+          
+          // 如果緩存的匯率在24小時內，直接返回
+          if (hoursDiff < 24) {
+            return new Response(
+              JSON.stringify({ success: true, data: ratesData }),
+              { headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+        
+        // 如果沒有緩存或已過期，從 API 獲取最新匯率
+        const apiKey = '1723cb21602885ad29fd3f13';
+        const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`);
+        const apiData = await response.json();
+        
+        if (apiData.result === 'success') {
+          const ratesData = {
+            base: 'USD',
+            rates: apiData.conversion_rates,
+            lastUpdated: new Date().toISOString(),
+            source: 'exchangerate-api.com'
+          };
+          
+          // 緩存到 KV
+          await env.SUBSCRIPTIONS_KV.put('currency_rates', JSON.stringify(ratesData));
+          
+          return new Response(
+            JSON.stringify({ success: true, data: ratesData }),
+            { headers: { 'Content-Type': 'application/json' } }
+          );
+        } else {
+          throw new Error(apiData['error-type'] || '匯率 API 錯誤');
+        }
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ success: false, message: '獲取匯率失敗: ' + error.message }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    
+    if (path === '/currency/update' && method === 'POST') {
+      try {
+        // 強制更新匯率
+        const apiKey = '1723cb21602885ad29fd3f13';
+        const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`);
+        const apiData = await response.json();
+        
+        if (apiData.result === 'success') {
+          const ratesData = {
+            base: 'USD',
+            rates: apiData.conversion_rates,
+            lastUpdated: new Date().toISOString(),
+            source: 'exchangerate-api.com'
+          };
+          
+          await env.SUBSCRIPTIONS_KV.put('currency_rates', JSON.stringify(ratesData));
+          
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              message: '匯率更新成功',
+              data: ratesData
+            }),
+            { headers: { 'Content-Type': 'application/json' } }
+          );
+        } else {
+          throw new Error(apiData['error-type'] || '匯率 API 錯誤');
+        }
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ success: false, message: '更新匯率失敗: ' + error.message }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    
+    if (path === '/currency/convert' && method === 'POST') {
+      try {
+        const body = await request.json();
+        const { amount, from, to } = body;
+        
+        if (!amount || !from || !to) {
+          return new Response(
+            JSON.stringify({ success: false, message: '缺少必要參數: amount, from, to' }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // 獲取最新匯率
+        const ratesData = await env.SUBSCRIPTIONS_KV.get('currency_rates');
+        let rates;
+        
+        if (ratesData) {
+          const parsed = JSON.parse(ratesData);
+          rates = parsed.rates;
+        } else {
+          // 如果沒有緩存匯率，從 API 獲取
+          const apiKey = '1723cb21602885ad29fd3f13';
+          const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`);
+          const apiData = await response.json();
+          
+          if (apiData.result === 'success') {
+            rates = apiData.conversion_rates;
+          } else {
+            throw new Error('無法獲取匯率數據');
+          }
+        }
+        
+        // 進行貨幣轉換 (所有匯率都基於 USD)
+        let convertedAmount;
+        if (from === 'USD') {
+          convertedAmount = amount * rates[to];
+        } else if (to === 'USD') {
+          convertedAmount = amount / rates[from];
+        } else {
+          // 先轉換到 USD，再轉換到目標貨幣
+          const usdAmount = amount / rates[from];
+          convertedAmount = usdAmount * rates[to];
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            convertedAmount: parseFloat(convertedAmount.toFixed(4)),
+            originalAmount: amount,
+            from,
+            to,
+            rate: convertedAmount / amount
+          }),
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+      } catch (error) {
+        return new Response(
+          JSON.stringify({ success: false, message: '貨幣轉換失敗: ' + error.message }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    
     if (path === '/subscriptions') {
       if (method === 'GET') {
         const subscriptions = await getAllSubscriptions(env);
@@ -1406,6 +1678,92 @@ const api = {
             headers: { 'Content-Type': 'application/json' } 
           }
         );
+      }
+    }
+    
+    // Purchase History endpoints
+    if (path.startsWith('/subscriptions/') && path.includes('/purchases')) {
+      const parts = path.split('/');
+      const subscriptionId = parts[2];
+      
+      if (parts[3] === 'purchases' && method === 'GET') {
+        // GET /api/subscriptions/:id/purchases
+        try {
+          const purchases = await getSubscriptionPurchases(subscriptionId, env);
+          return new Response(
+            JSON.stringify({ success: true, data: purchases }),
+            { headers: { 'Content-Type': 'application/json' } }
+          );
+        } catch (error) {
+          return new Response(
+            JSON.stringify({ success: false, message: '獲取購買記錄失敗: ' + error.message }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+      
+      if (parts[3] === 'purchases' && method === 'POST') {
+        // POST /api/subscriptions/:id/purchases
+        try {
+          const purchase = await request.json();
+          const result = await createPurchase(subscriptionId, purchase, env);
+          return new Response(
+            JSON.stringify(result),
+            { 
+              status: result.success ? 201 : 400, 
+              headers: { 'Content-Type': 'application/json' } 
+            }
+          );
+        } catch (error) {
+          return new Response(
+            JSON.stringify({ success: false, message: '創建購買記錄失敗: ' + error.message }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+    
+    if (path.startsWith('/purchases/')) {
+      const parts = path.split('/');
+      const purchaseId = parts[2];
+      
+      if (method === 'PUT') {
+        // PUT /api/purchases/:purchaseId
+        try {
+          const purchase = await request.json();
+          const result = await updatePurchase(purchaseId, purchase, env);
+          return new Response(
+            JSON.stringify(result),
+            { 
+              status: result.success ? 200 : 400, 
+              headers: { 'Content-Type': 'application/json' } 
+            }
+          );
+        } catch (error) {
+          return new Response(
+            JSON.stringify({ success: false, message: '更新購買記錄失敗: ' + error.message }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+      
+      if (method === 'DELETE') {
+        // DELETE /api/purchases/:purchaseId
+        try {
+          const result = await deletePurchase(purchaseId, env);
+          return new Response(
+            JSON.stringify(result),
+            { 
+              status: result.success ? 200 : 400, 
+              headers: { 'Content-Type': 'application/json' } 
+            }
+          );
+        } catch (error) {
+          return new Response(
+            JSON.stringify({ success: false, message: '刪除購買記錄失敗: ' + error.message }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
     
@@ -1517,16 +1875,28 @@ async function createSubscription(subscription, env) {
       id: Date.now().toString(),
       name: subscription.name,
       customType: subscription.customType || '',
-      startDate: subscription.startDate || null,
-      expiryDate: subscription.expiryDate,
-      periodValue: subscription.periodValue || 1,
-      periodUnit: subscription.periodUnit || 'month',
+      currentPlan: {
+        startDate: subscription.startDate || null,
+        expiryDate: subscription.expiryDate,
+        price: subscription.price || 0,
+        currency: subscription.currency || 'TWD',
+        platform: subscription.platform || '未指定',
+        periodValue: subscription.periodValue || 1,
+        periodUnit: subscription.periodUnit || 'month'
+      },
+      purchaseHistory: [],
+      statistics: {
+        totalSpent: subscription.price || 0,
+        totalMonths: subscription.periodValue || 1,
+        averageMonthlyFee: (subscription.price || 0) / (subscription.periodValue || 1),
+        bestDeal: null,
+        platformCount: 1,
+        platforms: [subscription.platform || '未指定']
+      },
       reminderDays: subscription.reminderDays !== undefined ? subscription.reminderDays : 7,
       notes: subscription.notes || '',
       isActive: subscription.isActive !== false,
       autoRenew: subscription.autoRenew !== false,
-      price: subscription.price || 0,
-      currency: subscription.currency || 'TWD',
       createdAt: new Date().toISOString()
     };
     
@@ -1569,22 +1939,41 @@ async function updateSubscription(id, subscription, env) {
       subscription.expiryDate = expiryDate.toISOString();
     }
     
+    // 初始化 currentPlan 如果不存在
+    if (!subscriptions[index].currentPlan) {
+      subscriptions[index].currentPlan = {
+        startDate: subscriptions[index].startDate || null,
+        expiryDate: subscriptions[index].expiryDate,
+        price: subscriptions[index].price || 0,
+        currency: subscriptions[index].currency || 'TWD',
+        platform: '未指定',
+        periodValue: subscriptions[index].periodValue || 1,
+        periodUnit: subscriptions[index].periodUnit || 'month'
+      };
+    }
+    
     subscriptions[index] = {
       ...subscriptions[index],
       name: subscription.name,
       customType: subscription.customType || subscriptions[index].customType || '',
-      startDate: subscription.startDate || subscriptions[index].startDate,
-      expiryDate: subscription.expiryDate,
-      periodValue: subscription.periodValue || subscriptions[index].periodValue || 1,
-      periodUnit: subscription.periodUnit || subscriptions[index].periodUnit || 'month',
+      currentPlan: {
+        startDate: subscription.startDate || subscriptions[index].currentPlan.startDate,
+        expiryDate: subscription.expiryDate,
+        price: subscription.price !== undefined ? subscription.price : subscriptions[index].currentPlan.price,
+        currency: subscription.currency || subscriptions[index].currentPlan.currency || 'TWD',
+        platform: subscription.platform || subscriptions[index].currentPlan.platform || '未指定',
+        periodValue: subscription.periodValue || subscriptions[index].currentPlan.periodValue || 1,
+        periodUnit: subscription.periodUnit || subscriptions[index].currentPlan.periodUnit || 'month'
+      },
       reminderDays: subscription.reminderDays !== undefined ? subscription.reminderDays : (subscriptions[index].reminderDays !== undefined ? subscriptions[index].reminderDays : 7),
       notes: subscription.notes || '',
       isActive: subscription.isActive !== undefined ? subscription.isActive : subscriptions[index].isActive,
       autoRenew: subscription.autoRenew !== undefined ? subscription.autoRenew : (subscriptions[index].autoRenew !== undefined ? subscriptions[index].autoRenew : true),
-      price: subscription.price !== undefined ? subscription.price : (subscriptions[index].price || 0),
-      currency: subscription.currency || subscriptions[index].currency || 'TWD',
       updatedAt: new Date().toISOString()
     };
+    
+    // 重新計算統計資訊
+    subscriptions[index].statistics = calculateSubscriptionStatistics(subscriptions[index]);
     
     await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
     
@@ -1634,6 +2023,228 @@ async function toggleSubscriptionStatus(id, isActive, env) {
   }
 }
 
+// Purchase History helper functions
+async function getSubscriptionPurchases(subscriptionId, env) {
+  try {
+    const subscription = await getSubscription(subscriptionId, env);
+    if (!subscription) {
+      return { success: false, message: '未找到該訂閱' };
+    }
+    
+    return {
+      success: true,
+      data: subscription.purchaseHistory || []
+    };
+  } catch (error) {
+    return { success: false, message: '獲取購買記錄失敗: ' + error.message };
+  }
+}
+
+async function createPurchase(subscriptionId, purchaseData, env) {
+  try {
+    const subscriptions = await getAllSubscriptions(env);
+    const index = subscriptions.findIndex(sub => sub.id === subscriptionId);
+    
+    if (index === -1) {
+      return { success: false, message: '未找到該訂閱' };
+    }
+    
+    // 驗證必要字段
+    if (!purchaseData.price || !purchaseData.currency || !purchaseData.platform) {
+      return { success: false, message: '缺少必要字段: price, currency, platform' };
+    }
+    
+    // 創建新購買記錄
+    const newPurchase = {
+      id: `purchase_${subscriptionId}_${Date.now()}`,
+      purchaseDate: purchaseData.purchaseDate || new Date().toISOString(),
+      startDate: purchaseData.startDate || purchaseData.purchaseDate || new Date().toISOString(),
+      endDate: purchaseData.endDate || null,
+      price: parseFloat(purchaseData.price),
+      currency: purchaseData.currency,
+      originalPrice: purchaseData.originalPrice || null,
+      originalCurrency: purchaseData.originalCurrency || null,
+      platform: purchaseData.platform,
+      duration: purchaseData.duration || 1,
+      durationUnit: purchaseData.durationUnit || 'month',
+      notes: purchaseData.notes || ''
+    };
+    
+    // 初始化 purchaseHistory 如果不存在
+    if (!subscriptions[index].purchaseHistory) {
+      subscriptions[index].purchaseHistory = [];
+    }
+    
+    // 添加新購買記錄
+    subscriptions[index].purchaseHistory.push(newPurchase);
+    
+    // 重新計算統計資訊
+    subscriptions[index].statistics = calculateSubscriptionStatistics(subscriptions[index]);
+    subscriptions[index].updatedAt = new Date().toISOString();
+    
+    // 保存到 KV
+    await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
+    
+    return { 
+      success: true, 
+      message: '購買記錄創建成功',
+      purchase: newPurchase
+    };
+  } catch (error) {
+    return { success: false, message: '創建購買記錄失敗: ' + error.message };
+  }
+}
+
+async function updatePurchase(purchaseId, purchaseData, env) {
+  try {
+    const subscriptions = await getAllSubscriptions(env);
+    let foundPurchase = null;
+    let subscriptionIndex = -1;
+    let purchaseIndex = -1;
+    
+    // 尋找購買記錄
+    for (let i = 0; i < subscriptions.length; i++) {
+      if (subscriptions[i].purchaseHistory) {
+        const pIndex = subscriptions[i].purchaseHistory.findIndex(p => p.id === purchaseId);
+        if (pIndex !== -1) {
+          foundPurchase = subscriptions[i].purchaseHistory[pIndex];
+          subscriptionIndex = i;
+          purchaseIndex = pIndex;
+          break;
+        }
+      }
+    }
+    
+    if (!foundPurchase) {
+      return { success: false, message: '未找到該購買記錄' };
+    }
+    
+    // 更新購買記錄
+    const updatedPurchase = {
+      ...foundPurchase,
+      ...purchaseData,
+      id: purchaseId, // 保持原 ID
+      price: purchaseData.price ? parseFloat(purchaseData.price) : foundPurchase.price
+    };
+    
+    subscriptions[subscriptionIndex].purchaseHistory[purchaseIndex] = updatedPurchase;
+    
+    // 重新計算統計資訊
+    subscriptions[subscriptionIndex].statistics = calculateSubscriptionStatistics(subscriptions[subscriptionIndex]);
+    subscriptions[subscriptionIndex].updatedAt = new Date().toISOString();
+    
+    // 保存到 KV
+    await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
+    
+    return { 
+      success: true, 
+      message: '購買記錄更新成功',
+      purchase: updatedPurchase
+    };
+  } catch (error) {
+    return { success: false, message: '更新購買記錄失敗: ' + error.message };
+  }
+}
+
+async function deletePurchase(purchaseId, env) {
+  try {
+    const subscriptions = await getAllSubscriptions(env);
+    let foundPurchase = null;
+    let subscriptionIndex = -1;
+    let purchaseIndex = -1;
+    
+    // 尋找購買記錄
+    for (let i = 0; i < subscriptions.length; i++) {
+      if (subscriptions[i].purchaseHistory) {
+        const pIndex = subscriptions[i].purchaseHistory.findIndex(p => p.id === purchaseId);
+        if (pIndex !== -1) {
+          foundPurchase = subscriptions[i].purchaseHistory[pIndex];
+          subscriptionIndex = i;
+          purchaseIndex = pIndex;
+          break;
+        }
+      }
+    }
+    
+    if (!foundPurchase) {
+      return { success: false, message: '未找到該購買記錄' };
+    }
+    
+    // 刪除購買記錄
+    subscriptions[subscriptionIndex].purchaseHistory.splice(purchaseIndex, 1);
+    
+    // 重新計算統計資訊
+    subscriptions[subscriptionIndex].statistics = calculateSubscriptionStatistics(subscriptions[subscriptionIndex]);
+    subscriptions[subscriptionIndex].updatedAt = new Date().toISOString();
+    
+    // 保存到 KV
+    await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
+    
+    return { 
+      success: true, 
+      message: '購買記錄刪除成功'
+    };
+  } catch (error) {
+    return { success: false, message: '刪除購買記錄失敗: ' + error.message };
+  }
+}
+
+// 計算訂閱統計資訊的輔助函數
+function calculateSubscriptionStatistics(subscription) {
+  if (!subscription.purchaseHistory || subscription.purchaseHistory.length === 0) {
+    return {
+      totalSpent: subscription.currentPlan?.price || 0,
+      totalMonths: 1,
+      averageMonthlyFee: subscription.currentPlan?.price || 0,
+      bestDeal: null,
+      platformCount: subscription.currentPlan?.platform ? 1 : 0,
+      platforms: subscription.currentPlan?.platform ? [subscription.currentPlan.platform] : []
+    };
+  }
+  
+  let totalSpent = 0;
+  let totalMonths = 0;
+  let bestDeal = null;
+  let bestDealRate = Infinity;
+  const platforms = new Set();
+  
+  // 包含當前計劃
+  if (subscription.currentPlan) {
+    totalSpent += subscription.currentPlan.price || 0;
+    totalMonths += subscription.currentPlan.periodValue || 1;
+    if (subscription.currentPlan.platform) {
+      platforms.add(subscription.currentPlan.platform);
+    }
+  }
+  
+  // 計算購買歷史
+  subscription.purchaseHistory.forEach(purchase => {
+    totalSpent += purchase.price || 0;
+    const months = purchase.duration || 1;
+    totalMonths += months;
+    
+    if (purchase.platform) {
+      platforms.add(purchase.platform);
+    }
+    
+    // 計算最划算的購買 (每月成本最低)
+    const monthlyRate = (purchase.price || 0) / months;
+    if (monthlyRate < bestDealRate) {
+      bestDealRate = monthlyRate;
+      bestDeal = purchase.id;
+    }
+  });
+  
+  return {
+    totalSpent: parseFloat(totalSpent.toFixed(2)),
+    totalMonths: totalMonths,
+    averageMonthlyFee: parseFloat((totalSpent / totalMonths).toFixed(2)),
+    bestDeal: bestDeal,
+    platformCount: platforms.size,
+    platforms: Array.from(platforms)
+  };
+}
+
 async function testSingleSubscriptionNotification(id, env) {
   try {
     const subscription = await getSubscription(id, env);
@@ -1648,9 +2259,9 @@ async function testSingleSubscriptionNotification(id, env) {
 
     // 根據所選通知渠道格式化消息内容，与主提醒功能保持一致
     if (config.NOTIFICATION_TYPE === 'notifyx') {
-        content = `## ${title}\n\n**訂閱詳情**:\n- **類型**: ${subscription.customType || '其他'}\n- **到期日**: ${new Date(subscription.expiryDate).toLocaleDateString()}\n- **價格**: ${subscription.price ? subscription.price.toFixed(2) + ' ' + (subscription.currency || 'TWD') : '未設定'}\n- **備注**: ${subscription.notes || '无'}`;
+        content = `## ${title}\n\n**訂閱詳情**:\n- **類型**: ${subscription.customType || '其他'}\n- **到期日**: ${new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate).toLocaleDateString()}\n- **價格**: ${(subscription.currentPlan?.price || subscription.price) ? (subscription.currentPlan?.price || subscription.price).toFixed(2) + ' ' + (subscription.currentPlan?.currency || subscription.currency || 'TWD') : '未設定'}\n- **備注**: ${subscription.notes || '无'}`;
     } else { // 默认 Telegram
-        content = `*${title}*\n\n**訂閱詳情**:\n- **類型**: ${subscription.customType || '其他'}\n- **到期日**: ${new Date(subscription.expiryDate).toLocaleDateString()}\n- **價格**: ${subscription.price ? subscription.price.toFixed(2) + ' ' + (subscription.currency || 'TWD') : '未設定'}\n- **備注**: ${subscription.notes || '无'}`;
+        content = `*${title}*\n\n**訂閱詳情**:\n- **類型**: ${subscription.customType || '其他'}\n- **到期日**: ${new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate).toLocaleDateString()}\n- **價格**: ${(subscription.currentPlan?.price || subscription.price) ? (subscription.currentPlan?.price || subscription.price).toFixed(2) + ' ' + (subscription.currentPlan?.currency || subscription.currency || 'TWD') : '未設定'}\n- **備注**: ${subscription.notes || '无'}`;
     }
 
     const success = await sendNotification(title, content, description, config);
@@ -1782,7 +2393,7 @@ async function checkExpiringSubscriptions(env) {
         continue;
       }
       
-      const expiryDate = new Date(subscription.expiryDate);
+      const expiryDate = new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate);
       const daysDiff = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
       
       console.log('[定時任務] 訂閱 "' + subscription.name + '" 到期日期: ' + expiryDate.toISOString() + ', 剩餘天數: ' + daysDiff);
@@ -1827,7 +2438,13 @@ async function checkExpiringSubscriptions(env) {
         
         console.log('[定時任務] 訂閱 "' + subscription.name + '" 更新到期日期: ' + newExpiryDate.toISOString());
         
-        const updatedSubscription = { ...subscription, expiryDate: newExpiryDate.toISOString() };
+        const updatedSubscription = { 
+          ...subscription, 
+          currentPlan: {
+            ...subscription.currentPlan,
+            expiryDate: newExpiryDate.toISOString()
+          }
+        };
         updatedSubscriptions.push(updatedSubscription);
         hasUpdates = true;
         
@@ -1890,7 +2507,7 @@ async function checkExpiringSubscriptions(env) {
         else statusText = `📅 **${sub.name}** (${typeText}) ${periodText} 將在 ${sub.daysRemaining} 天後到期`;
 
         if (sub.notes) statusText += `\n   備注: ${sub.notes}`;
-        if (sub.price) statusText += `\n   價格: ${sub.price.toFixed(2)} ${sub.currency || 'TWD'}`;
+        if (sub.currentPlan?.price || sub.price) statusText += `\n   價格: ${(sub.currentPlan?.price || sub.price).toFixed(2)} ${sub.currentPlan?.currency || sub.currency || 'TWD'}`;
         commonContent += statusText + '\n\n';
       }
       
