@@ -166,6 +166,8 @@ const adminPage = `
   <style>
     .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: all 0.3s; }
     .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); }
+    .btn-secondary { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); transition: all 0.3s; }
+    .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); }
     .btn-danger { background: linear-gradient(135deg, #f87171 0%, #dc2626 100%); transition: all 0.3s; }
     .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); }
     .btn-success { background: linear-gradient(135deg, #34d399 0%, #059669 100%); transition: all 0.3s; }
@@ -238,7 +240,7 @@ const adminPage = `
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               到期時間 <i class="fas fa-sort-up ml-1 text-indigo-500" title="按到期時間升序排列"></i>
             </th>
-            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">價格</th>
+            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">月費 (TWD/M)</th>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">提醒設置</th>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
@@ -384,15 +386,31 @@ const adminPage = `
           <div class="error-message text-red-500"></div>
         </div>
         
-        <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-          <button type="button" id="cancelBtn" 
-            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-            取消
-          </button>
-          <button type="submit" 
-            class="btn-primary text-white px-4 py-2 rounded-md text-sm font-medium">
-            <i class="fas fa-save mr-2"></i>保存
-          </button>
+        <div class="flex justify-between items-center pt-4 border-t border-gray-200">
+          <div id="editActionButtons" class="flex space-x-2" style="display: none;">
+            <button type="button" id="testNotifyBtn" 
+              class="px-3 py-2 bg-blue-500 text-white rounded-md text-sm font-medium hover:bg-blue-600">
+              <i class="fas fa-bell mr-1"></i>測試
+            </button>
+            <button type="button" id="toggleStatusBtn" 
+              class="px-3 py-2 bg-yellow-500 text-white rounded-md text-sm font-medium hover:bg-yellow-600">
+              <i class="fas fa-toggle-on mr-1"></i>停用
+            </button>
+            <button type="button" id="deleteBtn" 
+              class="px-3 py-2 bg-red-500 text-white rounded-md text-sm font-medium hover:bg-red-600">
+              <i class="fas fa-trash mr-1"></i>刪除
+            </button>
+          </div>
+          <div class="flex space-x-3">
+            <button type="button" id="cancelBtn" 
+              class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+              取消
+            </button>
+            <button type="submit" 
+              class="btn-primary text-white px-4 py-2 rounded-md text-sm font-medium">
+              <i class="fas fa-save mr-2"></i>保存
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -563,6 +581,44 @@ const adminPage = `
         exchangeRateDisplay.style.display = 'none';
       }
     }
+    
+    function formatMonthlyPrice(subscription) {
+      const price = subscription.currentPlan?.price || subscription.price;
+      const currency = subscription.currentPlan?.currency || subscription.currency || 'TWD';
+      const periodValue = subscription.currentPlan?.periodValue || subscription.periodValue || 1;
+      const periodUnit = subscription.currentPlan?.periodUnit || subscription.periodUnit || 'month';
+      const exchangeRateAtPurchase = subscription.currentPlan?.exchangeRateAtPurchase;
+      
+      if (!price) return '未設定';
+      
+      // 計算每月費用
+      let monthlyPrice = price;
+      if (periodUnit === 'day') {
+        monthlyPrice = price * 30 / periodValue;
+      } else if (periodUnit === 'month') {
+        monthlyPrice = price / periodValue;
+      } else if (periodUnit === 'year') {
+        monthlyPrice = price / (periodValue * 12);
+      }
+      
+      // 轉換為TWD - 優先使用購買時匯率
+      let twdPrice = monthlyPrice;
+      if (currency !== 'TWD') {
+        if (exchangeRateAtPurchase && exchangeRateAtPurchase.rate) {
+          // 使用購買時匯率
+          twdPrice = monthlyPrice * exchangeRateAtPurchase.rate;
+        } else if (exchangeRates) {
+          // 備用：使用當前匯率
+          twdPrice = convertCurrency(monthlyPrice, currency, 'TWD');
+        }
+      }
+      
+      if (twdPrice !== null && twdPrice !== monthlyPrice) {
+        return twdPrice.toFixed(0) + ' TWD/M';
+      }
+      
+      return monthlyPrice.toFixed(0) + ' ' + currency + '/M';
+    }
 
     // 獲取所有訂閱並按到期時間排序
     async function loadSubscriptions() {
@@ -628,7 +684,10 @@ const adminPage = `
               '<div class="text-sm text-gray-900">' + 
                 '<i class="fas fa-tag mr-1"></i>' + (subscription.customType || '其他') + 
               '</div>' +
-              (periodText ? '<div class="text-xs text-gray-500">周期: ' + periodText + autoRenewIcon + '</div>' : '') +
+              '<div class="text-xs text-gray-500">' + 
+                (periodText ? '周期: ' + periodText : '無設定周期') + 
+                autoRenewIcon + 
+              '</div>' +
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap">' + 
               '<div class="text-sm text-gray-900">' + new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate).toLocaleDateString() + '</div>' +
@@ -638,7 +697,7 @@ const adminPage = `
             '<td class="px-6 py-4 whitespace-nowrap">' + 
               '<div class="text-sm text-gray-900">' + 
                 '<i class="fas fa-dollar-sign mr-1"></i>' + 
-                formatPriceWithConversion(subscription.currentPlan?.price || subscription.price, subscription.currentPlan?.currency || subscription.currency || 'TWD') + 
+                formatMonthlyPrice(subscription) + 
               '</div>' +
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">' + 
@@ -647,40 +706,35 @@ const adminPage = `
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap">' + statusHtml + '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium">' +
-              '<div class="flex flex-wrap gap-1 action-buttons">' +
-                '<button class="edit btn-primary text-white px-2 py-1 rounded text-xs" data-id="' + subscription.id + '"><i class="fas fa-edit mr-1"></i>編輯</button>' +
-                '<button class="test-notify btn-info text-white px-2 py-1 rounded text-xs" data-id="' + subscription.id + '"><i class="fas fa-paper-plane mr-1"></i>測試</button>' +
-                '<button class="delete btn-danger text-white px-2 py-1 rounded text-xs" data-id="' + subscription.id + '"><i class="fas fa-trash-alt mr-1"></i>删除</button>' +
-                (subscription.isActive ? 
-                  '<button class="toggle-status btn-warning text-white px-2 py-1 rounded text-xs" data-id="' + subscription.id + '" data-action="deactivate"><i class="fas fa-pause-circle mr-1"></i>停用</button>' : 
-                  '<button class="toggle-status btn-success text-white px-2 py-1 rounded text-xs" data-id="' + subscription.id + '" data-action="activate"><i class="fas fa-play-circle mr-1"></i>啟用</button>') +
+              '<div class="flex flex-wrap gap-2 action-buttons">' +
+                '<button class="view-details btn-secondary text-white px-3 py-1 rounded text-sm" data-id="' + subscription.id + '"><i class="fas fa-eye mr-1"></i>詳情</button>' +
+                '<button class="edit btn-primary text-white px-3 py-1 rounded text-sm" data-id="' + subscription.id + '"><i class="fas fa-edit mr-1"></i>編輯</button>' +
               '</div>' +
             '</td>';
           
           tbody.appendChild(row);
         });
         
+        document.querySelectorAll('.view-details').forEach(button => {
+          button.addEventListener('click', viewSubscriptionDetails);
+        });
+        
         document.querySelectorAll('.edit').forEach(button => {
           button.addEventListener('click', editSubscription);
         });
         
-        document.querySelectorAll('.delete').forEach(button => {
-          button.addEventListener('click', deleteSubscription);
-        });
-        
-        document.querySelectorAll('.toggle-status').forEach(button => {
-          button.addEventListener('click', toggleSubscriptionStatus);
-        });
-
-        document.querySelectorAll('.test-notify').forEach(button => {
-          button.addEventListener('click', testSubscriptionNotification);
-        });
       } catch (error) {
         console.error('加載訂閱失敗:', error);
         const tbody = document.getElementById('subscriptionsBody');
         tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-red-500"><i class="fas fa-exclamation-circle mr-2"></i>加載失敗，請刷新頁面重試</td></tr>';
         showToast('加載訂閱列表失敗', 'error');
       }
+    }
+    
+    function viewSubscriptionDetails(e) {
+      const id = e.target.dataset.id || e.target.parentElement.dataset.id;
+      // 導向詳情頁面
+      window.location.href = '/details?id=' + id;
     }
     
     async function testSubscriptionNotification(e) {
@@ -743,6 +797,10 @@ const adminPage = `
     
     document.getElementById('addSubscriptionBtn').addEventListener('click', async () => {
       document.getElementById('modalTitle').textContent = '添加新訂閱';
+      
+      // 隱藏編輯專用的操作按鈕
+      document.getElementById('editActionButtons').style.display = 'none';
+      
       document.getElementById('subscriptionModal').classList.remove('hidden');
       
       document.getElementById('subscriptionForm').reset();
@@ -789,6 +847,21 @@ const adminPage = `
       document.getElementById('cancelBtn').addEventListener('click', () => {
         document.getElementById('subscriptionModal').classList.add('hidden');
       });
+      
+      // 添加編輯模式的操作按鈕事件監聽器
+      const testNotifyBtn = document.getElementById('testNotifyBtn');
+      const toggleStatusBtn = document.getElementById('toggleStatusBtn');
+      const deleteBtn = document.getElementById('deleteBtn');
+      
+      // 移除舊的事件監聽器並添加新的
+      testNotifyBtn.removeEventListener('click', testSubscriptionNotification);
+      testNotifyBtn.addEventListener('click', testSubscriptionNotification);
+      
+      toggleStatusBtn.removeEventListener('click', toggleSubscriptionStatus);
+      toggleStatusBtn.addEventListener('click', toggleSubscriptionStatus);
+      
+      deleteBtn.removeEventListener('click', deleteSubscription);
+      deleteBtn.addEventListener('click', deleteSubscription);
     }
     
     function calculateExpiryDate() {
@@ -819,8 +892,24 @@ const adminPage = `
     });
     
     document.getElementById('subscriptionModal').addEventListener('click', (event) => {
+      // 只有在點擊 Modal 背景（灰色遮罩區域）時才關閉
+      // 排除在表單輸入過程中的意外關閉
       if (event.target === document.getElementById('subscriptionModal')) {
-        document.getElementById('subscriptionModal').classList.add('hidden');
+        // 檢查是否有文字被選取
+        const selection = window.getSelection();
+        
+        // 檢查是否有任何輸入框正在被聚焦
+        const activeElement = document.activeElement;
+        const isInputFocused = activeElement && (
+          activeElement.tagName === 'INPUT' || 
+          activeElement.tagName === 'TEXTAREA' || 
+          activeElement.tagName === 'SELECT'
+        );
+        
+        // 只有在沒有文字選取且沒有輸入框被聚焦時才關閉
+        if (selection.toString().length === 0 && !isInputFocused) {
+          document.getElementById('subscriptionModal').classList.add('hidden');
+        }
       }
     });
     
@@ -904,6 +993,26 @@ const adminPage = `
           document.getElementById('currency').value = subscription.currentPlan?.currency || subscription.currency || 'TWD';
           
           clearFieldErrors();
+          
+          // 顯示編輯專用的操作按鈕
+          const actionButtons = document.getElementById('editActionButtons');
+          actionButtons.style.display = 'flex';
+          
+          // 設置按鈕的訂閱ID
+          document.getElementById('testNotifyBtn').dataset.id = subscription.id;
+          document.getElementById('toggleStatusBtn').dataset.id = subscription.id;
+          document.getElementById('deleteBtn').dataset.id = subscription.id;
+          
+          // 更新停用/啟用按鈕文字和圖示
+          const toggleBtn = document.getElementById('toggleStatusBtn');
+          if (subscription.isActive !== false) {
+            toggleBtn.innerHTML = '<i class="fas fa-toggle-off mr-1"></i>停用';
+            toggleBtn.className = 'px-3 py-2 bg-yellow-500 text-white rounded-md text-sm font-medium hover:bg-yellow-600';
+          } else {
+            toggleBtn.innerHTML = '<i class="fas fa-toggle-on mr-1"></i>啟用';
+            toggleBtn.className = 'px-3 py-2 bg-green-500 text-white rounded-md text-sm font-medium hover:bg-green-600';
+          }
+          
           document.getElementById('subscriptionModal').classList.remove('hidden');
           setupModalEventListeners();
           
@@ -936,6 +1045,8 @@ const adminPage = `
         
         if (response.ok) {
           showToast('删除成功', 'success');
+          // 關閉編輯 Modal，因為訂閱已被刪除
+          document.getElementById('subscriptionModal').classList.add('hidden');
           loadSubscriptions();
         } else {
           const error = await response.json();
@@ -1093,6 +1204,68 @@ const configPage = `
               <button type="button" id="testNotifyXBtn" class="btn-secondary text-white px-4 py-2 rounded-md text-sm font-medium">
                 <i class="fas fa-paper-plane mr-2"></i>測試 NotifyX 通知
               </button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 匯率管理區塊 -->
+        <div class="border-b border-gray-200 pb-6">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">
+            <i class="fas fa-exchange-alt mr-2"></i>匯率管理
+          </h3>
+          
+          <div class="config-section">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h4 class="text-md font-medium text-gray-900">匯率 API 狀態</h4>
+                <p class="text-sm text-gray-500">當前匯率數據來源: ExchangeRate-API</p>
+              </div>
+              <div id="apiStatusIndicator" class="flex items-center">
+                <div class="w-3 h-3 bg-gray-400 rounded-full mr-2"></div>
+                <span class="text-sm text-gray-500">檢查中...</span>
+              </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">最後更新時間</label>
+                <p id="lastUpdated" class="text-sm text-gray-900">-</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">數據來源</label>
+                <p id="dataSource" class="text-sm text-gray-900">-</p>
+              </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+              <button type="button" id="updateExchangeRatesBtn" class="btn-secondary text-white px-4 py-2 rounded-md text-sm font-medium">
+                <i class="fas fa-sync mr-2"></i>手動更新匯率
+              </button>
+              <button type="button" id="checkApiStatusBtn" class="btn-primary text-white px-4 py-2 rounded-md text-sm font-medium">
+                <i class="fas fa-check-circle mr-2"></i>檢查 API 狀態
+              </button>
+            </div>
+          </div>
+          
+          <div class="config-section mt-4">
+            <h4 class="text-md font-medium text-gray-900 mb-3">當前匯率</h4>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">USD → TWD</label>
+                <p id="currentUsdToTwd" class="mt-1 text-lg font-semibold text-gray-900">-</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">CNY → TWD</label>
+                <p id="currentCnyToTwd" class="mt-1 text-lg font-semibold text-gray-900">-</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">EUR → TWD</label>
+                <p id="currentEurToTwd" class="mt-1 text-lg font-semibold text-gray-900">-</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">JPY → TWD</label>
+                <p id="currentJpyToTwd" class="mt-1 text-lg font-semibold text-gray-900">-</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1279,7 +1452,759 @@ const configPage = `
       testNotification('notifyx');
     });
     
-    window.addEventListener('load', loadConfig);
+    // 檢查匯率 API 狀態
+    async function checkExchangeRateApiStatus() {
+      const statusIndicator = document.getElementById('apiStatusIndicator');
+      const button = document.getElementById('checkApiStatusBtn');
+      
+      // 更新按鈕狀態
+      const originalContent = button.innerHTML;
+      button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>檢查中...';
+      button.disabled = true;
+      
+      try {
+        const response = await fetch('/api/currency/rates');
+        const result = await response.json();
+        
+        if (result.success) {
+          // 更新狀態指示器
+          statusIndicator.innerHTML = '<div class="w-3 h-3 bg-green-400 rounded-full mr-2"></div><span class="text-sm text-green-600">API 正常</span>';
+          
+          // 更新匯率信息
+          document.getElementById('lastUpdated').textContent = new Date(result.data.lastUpdated).toLocaleString('zh-TW');
+          document.getElementById('dataSource').textContent = result.data.source;
+          
+          // 更新當前匯率顯示
+          const rates = result.data.rates;
+          if (rates) {
+            const usdToTwd = rates.TWD || rates.USD ? (rates.TWD / rates.USD).toFixed(2) : '-';
+            const cnyToTwd = rates.TWD && rates.CNY ? (rates.TWD / rates.CNY).toFixed(2) : '-';
+            const eurToTwd = rates.TWD && rates.EUR ? (rates.TWD / rates.EUR).toFixed(2) : '-';
+            const jpyToTwd = rates.TWD && rates.JPY ? (rates.TWD / rates.JPY).toFixed(4) : '-';
+            
+            document.getElementById('currentUsdToTwd').textContent = usdToTwd;
+            document.getElementById('currentCnyToTwd').textContent = cnyToTwd;
+            document.getElementById('currentEurToTwd').textContent = eurToTwd;
+            document.getElementById('currentJpyToTwd').textContent = jpyToTwd;
+          }
+          
+          showToast('匯率 API 狀態正常', 'success');
+        } else {
+          throw new Error(result.message);
+        }
+      } catch (error) {
+        statusIndicator.innerHTML = '<div class="w-3 h-3 bg-red-400 rounded-full mr-2"></div><span class="text-sm text-red-600">API 異常</span>';
+        showToast('匯率 API 狀態異常: ' + error.message, 'error');
+      } finally {
+        button.innerHTML = originalContent;
+        button.disabled = false;
+      }
+    }
+    
+    // 手動更新匯率
+    async function updateExchangeRates() {
+      const button = document.getElementById('updateExchangeRatesBtn');
+      const originalContent = button.innerHTML;
+      
+      button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>更新中...';
+      button.disabled = true;
+      
+      try {
+        const response = await fetch('/api/currency/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          showToast('匯率更新成功', 'success');
+          
+          // 更新顯示信息
+          document.getElementById('lastUpdated').textContent = new Date(result.data.lastUpdated).toLocaleString('zh-TW');
+          document.getElementById('dataSource').textContent = result.data.source;
+          
+          // 更新當前匯率顯示
+          const rates = result.data.rates;
+          if (rates) {
+            const usdToTwd = rates.TWD || rates.USD ? (rates.TWD / rates.USD).toFixed(2) : '-';
+            const cnyToTwd = rates.TWD && rates.CNY ? (rates.TWD / rates.CNY).toFixed(2) : '-';
+            const eurToTwd = rates.TWD && rates.EUR ? (rates.TWD / rates.EUR).toFixed(2) : '-';
+            const jpyToTwd = rates.TWD && rates.JPY ? (rates.TWD / rates.JPY).toFixed(4) : '-';
+            
+            document.getElementById('currentUsdToTwd').textContent = usdToTwd;
+            document.getElementById('currentCnyToTwd').textContent = cnyToTwd;
+            document.getElementById('currentEurToTwd').textContent = eurToTwd;
+            document.getElementById('currentJpyToTwd').textContent = jpyToTwd;
+          }
+          
+          // 更新狀態指示器
+          document.getElementById('apiStatusIndicator').innerHTML = '<div class="w-3 h-3 bg-green-400 rounded-full mr-2"></div><span class="text-sm text-green-600">API 正常</span>';
+        } else {
+          throw new Error(result.message);
+        }
+      } catch (error) {
+        showToast('匯率更新失敗: ' + error.message, 'error');
+      } finally {
+        button.innerHTML = originalContent;
+        button.disabled = false;
+      }
+    }
+    
+    // 匯率管理事件監聽器
+    document.getElementById('checkApiStatusBtn').addEventListener('click', checkExchangeRateApiStatus);
+    document.getElementById('updateExchangeRatesBtn').addEventListener('click', updateExchangeRates);
+    
+    window.addEventListener('load', () => {
+      loadConfig();
+      // 頁面載入時檢查匯率狀態
+      setTimeout(() => {
+        checkExchangeRateApiStatus();
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
+`;
+
+// 服務詳情頁面
+const detailsPage = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>服務詳情 - 訂閱管理系統</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <style>
+    .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: all 0.3s; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); }
+    .btn-secondary { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); transition: all 0.3s; }
+    .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); }
+    .btn-danger { background: linear-gradient(135deg, #f87171 0%, #dc2626 100%); transition: all 0.3s; }
+    .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); }
+    .btn-success { background: linear-gradient(135deg, #34d399 0%, #059669 100%); transition: all 0.3s; }
+    .btn-success:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); }
+    
+    .info-card { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+    .modal-container { backdrop-filter: blur(8px); }
+    
+    .toast {
+      position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px;
+      color: white; font-weight: 500; z-index: 1000; transform: translateX(400px);
+      transition: all 0.3s ease-in-out; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .toast.show { transform: translateX(0); }
+    .toast.success { background-color: #10b981; }
+    .toast.error { background-color: #ef4444; }
+    .toast.info { background-color: #3b82f6; }
+    .toast.warning { background-color: #f59e0b; }
+    
+    .timeline-item {
+      position: relative;
+      padding-left: 3rem;
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: 0.75rem;
+      top: 0.5rem;
+      width: 0.5rem;
+      height: 0.5rem;
+      background-color: #3b82f6;
+      border-radius: 50%;
+    }
+    .timeline-item::after {
+      content: '';
+      position: absolute;
+      left: 1rem;
+      top: 1rem;
+      width: 1px;
+      height: calc(100% - 1rem);
+      background-color: #e5e7eb;
+    }
+    .timeline-item:last-child::after {
+      display: none;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="toast-container"></div>
+
+  <!-- 導航欄 -->
+  <nav class="bg-white shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex items-center">
+          <i class="fas fa-calendar-check text-2xl text-indigo-600 mr-3"></i>
+          <h1 class="text-xl font-bold text-gray-800">訂閱管理系統</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+          <button onclick="window.location.href='/admin'" class="text-gray-600 hover:text-gray-900">
+            <i class="fas fa-arrow-left mr-2"></i>返回列表
+          </button>
+          <button onclick="window.location.href='/admin/config'" class="text-gray-600 hover:text-gray-900">
+            <i class="fas fa-cog mr-2"></i>系統設定
+          </button>
+          <button onclick="logout()" class="text-red-600 hover:text-red-900">
+            <i class="fas fa-sign-out-alt mr-2"></i>登出
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- 載入中狀態 -->
+    <div id="loading" class="text-center py-8">
+      <i class="fas fa-spinner fa-spin text-3xl text-gray-400 mb-4"></i>
+      <p class="text-gray-600">載入服務詳情中...</p>
+    </div>
+
+    <!-- 服務詳情內容 -->
+    <div id="content" class="hidden">
+      <!-- 服務基本信息 -->
+      <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h2 id="serviceName" class="text-2xl font-bold text-gray-800 mb-2">服務名稱</h2>
+            <div class="flex items-center space-x-4 text-sm text-gray-600">
+              <span id="serviceType"><i class="fas fa-tag mr-1"></i>類型</span>
+              <span id="serviceStatus"><i class="fas fa-circle mr-1"></i>狀態</span>
+              <span id="autoRenewStatus"><i class="fas fa-sync-alt mr-1"></i>自動續訂</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <div id="monthlyFee" class="text-2xl font-bold text-indigo-600 mb-1">費用</div>
+            <div id="expiryInfo" class="text-sm text-gray-600">到期信息</div>
+          </div>
+        </div>
+        
+        <div id="serviceNotes" class="bg-gray-50 rounded-lg p-4 text-gray-700 hidden">
+          <i class="fas fa-sticky-note mr-2"></i>
+          <span>備註內容</span>
+        </div>
+      </div>
+
+      <!-- 統計信息 -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white rounded-lg shadow p-6 text-center">
+          <div id="totalSpent" class="text-2xl font-bold text-green-600 mb-2">0</div>
+          <div class="text-sm text-gray-600">總花費 (TWD)</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6 text-center">
+          <div id="totalMonths" class="text-2xl font-bold text-blue-600 mb-2">0</div>
+          <div class="text-sm text-gray-600">總使用月數</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6 text-center">
+          <div id="avgMonthlyFee" class="text-2xl font-bold text-purple-600 mb-2">0</div>
+          <div class="text-sm text-gray-600">平均月費 (TWD)</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6 text-center">
+          <div id="platformCount" class="text-2xl font-bold text-orange-600 mb-2">0</div>
+          <div class="text-sm text-gray-600">購買平台數</div>
+        </div>
+      </div>
+
+      <!-- 購買歷史記錄 -->
+      <div class="bg-white rounded-lg shadow-lg p-6">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-xl font-bold text-gray-800">購買歷史記錄</h3>
+          <button id="addPurchaseBtn" class="btn-primary text-white px-4 py-2 rounded-md text-sm font-medium">
+            <i class="fas fa-plus mr-2"></i>新增購買記錄
+          </button>
+        </div>
+
+        <div id="purchaseHistory" class="space-y-4">
+          <!-- 購買記錄將在這裡動態生成 -->
+        </div>
+
+        <div id="noPurchaseHistory" class="text-center py-8 text-gray-500 hidden">
+          <i class="fas fa-shopping-cart text-4xl mb-4"></i>
+          <p>尚無購買記錄</p>
+          <p class="text-sm">點擊上方按鈕新增第一筆購買記錄</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增/編輯購買記錄 Modal -->
+  <div id="purchaseModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 modal-container hidden flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-2 sm:mx-4 max-h-screen overflow-y-auto">
+      <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 rounded-t-lg">
+        <div class="flex items-center justify-between">
+          <h3 id="purchaseModalTitle" class="text-lg font-medium text-gray-900">新增購買記錄</h3>
+          <button id="closePurchaseModal" class="text-gray-400 hover:text-gray-600">
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+      </div>
+      
+      <form id="purchaseForm" class="p-6 space-y-6">
+        <input type="hidden" id="purchaseId">
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label for="purchaseDate" class="block text-sm font-medium text-gray-700 mb-1">購買日期 *</label>
+            <input type="date" id="purchaseDate" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+          </div>
+          
+          <div>
+            <label for="platform" class="block text-sm font-medium text-gray-700 mb-1">購買平台 *</label>
+            <input type="text" id="platform" required placeholder="例如：淘寶、蝦皮、官方網站"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+          </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label for="price" class="block text-sm font-medium text-gray-700 mb-1">價格 *</label>
+            <input type="number" id="price" step="0.01" min="0" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+          </div>
+          
+          <div>
+            <label for="currency" class="block text-sm font-medium text-gray-700 mb-1">貨幣 *</label>
+            <select id="currency" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+              <option value="USD">美元 (USD)</option>
+              <option value="EUR">歐元 (EUR)</option>
+              <option value="TWD" selected>台幣 (TWD)</option>
+              <option value="CNY">人民幣 (CNY)</option>
+              <option value="JPY">日圓 (JPY)</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">服務開始日期</label>
+            <input type="date" id="startDate"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+          </div>
+          
+          <div>
+            <label for="duration" class="block text-sm font-medium text-gray-700 mb-1">服務時長 *</label>
+            <input type="number" id="duration" min="1" required value="1"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+          </div>
+          
+          <div>
+            <label for="durationUnit" class="block text-sm font-medium text-gray-700 mb-1">時長單位 *</label>
+            <select id="durationUnit" required
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+              <option value="day">天</option>
+              <option value="month" selected>月</option>
+              <option value="year">年</option>
+            </select>
+          </div>
+        </div>
+        
+        <div>
+          <label for="purchaseNotes" class="block text-sm font-medium text-gray-700 mb-1">備註</label>
+          <textarea id="purchaseNotes" rows="3" placeholder="購買備註、優惠信息等..."
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+        </div>
+        
+        <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+          <button type="button" id="cancelPurchaseBtn" 
+            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+            取消
+          </button>
+          <button type="submit" 
+            class="btn-primary text-white px-4 py-2 rounded-md text-sm font-medium">
+            <i class="fas fa-save mr-2"></i>保存
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let subscriptionId = null;
+    let subscriptionData = null;
+    let exchangeRates = null;
+
+    // 從 URL 參數獲取訂閱 ID
+    function getSubscriptionId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('id');
+    }
+
+    // Toast 通知函數
+    function showToast(message, type = 'success', duration = 3000) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast ' + type;
+      
+      const icon = type === 'success' ? 'check-circle' :
+                   type === 'error' ? 'exclamation-circle' :
+                   type === 'warning' ? 'exclamation-triangle' : 'info-circle';
+      
+      toast.innerHTML = '<div class="flex items-center"><i class="fas fa-' + icon + ' mr-2"></i><span>' + message + '</span></div>';
+      
+      container.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.classList.add('show');
+      }, 100);
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+          if (container.contains(toast)) {
+            container.removeChild(toast);
+          }
+        }, 300);
+      }, duration);
+    }
+
+    // 登出函數
+    function logout() {
+      fetch('/api/logout', { method: 'POST' })
+        .then(() => {
+          window.location.href = '/';
+        })
+        .catch(() => {
+          window.location.href = '/';
+        });
+    }
+
+    // 載入訂閱詳情
+    async function loadSubscriptionDetails() {
+      try {
+        const response = await fetch('/api/subscriptions/' + subscriptionId);
+        if (!response.ok) {
+          throw new Error('無法載入訂閱詳情');
+        }
+        
+        subscriptionData = await response.json();
+        renderSubscriptionDetails();
+        await loadPurchaseHistory();
+        
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+      } catch (error) {
+        console.error('載入訂閱詳情失敗:', error);
+        showToast('載入訂閱詳情失敗', 'error');
+        setTimeout(() => {
+          window.location.href = '/admin';
+        }, 2000);
+      }
+    }
+
+    // 渲染訂閱詳情
+    function renderSubscriptionDetails() {
+      document.getElementById('serviceName').textContent = subscriptionData.name;
+      document.getElementById('serviceType').innerHTML = '<i class="fas fa-tag mr-1"></i>' + (subscriptionData.customType || '其他');
+      
+      // 狀態顯示
+      const isActive = subscriptionData.isActive !== false;
+      document.getElementById('serviceStatus').innerHTML = 
+        '<i class="fas fa-circle mr-1 ' + (isActive ? 'text-green-500' : 'text-red-500') + '"></i>' + 
+        (isActive ? '啟用' : '停用');
+      
+      // 自動續訂狀態
+      const autoRenew = subscriptionData.autoRenew !== false;
+      document.getElementById('autoRenewStatus').innerHTML = 
+        '<i class="fas fa-' + (autoRenew ? 'sync-alt text-blue-500' : 'ban text-gray-400') + ' mr-1"></i>' + 
+        (autoRenew ? '自動續訂' : '不自動續訂');
+      
+      // 月費顯示
+      const monthlyFee = calculateMonthlyFee(subscriptionData);
+      document.getElementById('monthlyFee').textContent = monthlyFee;
+      
+      // 到期信息
+      const expiryDate = new Date(subscriptionData.currentPlan?.expiryDate || subscriptionData.expiryDate);
+      const now = new Date();
+      const daysDiff = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+      
+      let expiryText = expiryDate.toLocaleDateString();
+      if (daysDiff < 0) {
+        expiryText += ' (已過期 ' + Math.abs(daysDiff) + ' 天)';
+      } else {
+        expiryText += ' (還剩 ' + daysDiff + ' 天)';
+      }
+      document.getElementById('expiryInfo').textContent = expiryText;
+      
+      // 備註
+      if (subscriptionData.notes) {
+        document.getElementById('serviceNotes').classList.remove('hidden');
+        document.getElementById('serviceNotes').querySelector('span').textContent = subscriptionData.notes;
+      }
+      
+      // 統計信息
+      const stats = subscriptionData.statistics || {};
+      document.getElementById('totalSpent').textContent = (stats.totalSpent || 0).toFixed(0);
+      document.getElementById('totalMonths').textContent = stats.totalMonths || 0;
+      document.getElementById('avgMonthlyFee').textContent = (stats.averageMonthlyFee || 0).toFixed(0);
+      document.getElementById('platformCount').textContent = stats.platformCount || 0;
+    }
+
+    // 計算月費用
+    function calculateMonthlyFee(subscription) {
+      const price = subscription.currentPlan?.price || subscription.price || 0;
+      const currency = subscription.currentPlan?.currency || subscription.currency || 'TWD';
+      const periodValue = subscription.currentPlan?.periodValue || subscription.periodValue || 1;
+      const periodUnit = subscription.currentPlan?.periodUnit || subscription.periodUnit || 'month';
+      
+      if (!price) return '未設定';
+      
+      let monthlyPrice = price;
+      if (periodUnit === 'day') {
+        monthlyPrice = price * 30 / periodValue;
+      } else if (periodUnit === 'month') {
+        monthlyPrice = price / periodValue;
+      } else if (periodUnit === 'year') {
+        monthlyPrice = price / (periodValue * 12);
+      }
+      
+      return monthlyPrice.toFixed(0) + ' ' + currency + '/M';
+    }
+
+    // 載入購買歷史
+    async function loadPurchaseHistory() {
+      try {
+        const response = await fetch('/api/subscriptions/' + subscriptionId + '/purchases');
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error:', response.status, errorText);
+          throw new Error('無法載入購買歷史: ' + response.status);
+        }
+        
+        const result = await response.json();
+        console.log('購買記錄API返回:', result);
+        // 檢查API響應格式，支援兩種格式
+        let purchases;
+        if (result.data) {
+          // 新格式：{success: true, data: [...]}
+          purchases = result.data;
+        } else if (result.purchaseHistory) {
+          // 舊格式：直接返回訂閱對象
+          purchases = result.purchaseHistory;
+        } else {
+          purchases = [];
+        }
+        console.log('提取的購買記錄:', purchases);
+        renderPurchaseHistory(purchases);
+      } catch (error) {
+        console.error('載入購買歷史失敗:', error);
+        showToast('載入購買歷史失敗: ' + error.message, 'error');
+      }
+    }
+
+    // 渲染購買歷史
+    function renderPurchaseHistory(purchases) {
+      console.log('renderPurchaseHistory 開始執行，購買記錄:', purchases);
+      const container = document.getElementById('purchaseHistory');
+      const noPurchaseDiv = document.getElementById('noPurchaseHistory');
+      console.log('DOM元素檢查 - container:', container, 'noPurchaseDiv:', noPurchaseDiv);
+      
+      if (!purchases || purchases.length === 0) {
+        console.log('購買記錄為空，顯示無記錄訊息');
+        container.innerHTML = '';
+        noPurchaseDiv.classList.remove('hidden');
+        return;
+      }
+      
+      console.log('購買記錄不為空，準備渲染', purchases.length, '筆記錄');
+      
+      noPurchaseDiv.classList.add('hidden');
+      
+      // 按購買日期降序排序
+      purchases.sort((a, b) => new Date(b.purchaseDate) - new Date(a.purchaseDate));
+      
+      container.innerHTML = purchases.map(purchase => 
+        '<div class="timeline-item border rounded-lg p-4 bg-gray-50">' +
+          '<div class="flex justify-between items-start">' +
+            '<div class="flex-1">' +
+              '<div class="flex items-center space-x-4 mb-2">' +
+                '<span class="font-medium text-gray-800">' + new Date(purchase.purchaseDate).toLocaleDateString() + '</span>' +
+                '<span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">' + purchase.platform + '</span>' +
+                '<span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">' + purchase.price + ' ' + purchase.currency + '</span>' +
+              '</div>' +
+              '<div class="text-sm text-gray-600 space-y-1">' +
+                '<div><i class="fas fa-calendar mr-1"></i>服務期間: ' + new Date(purchase.startDate).toLocaleDateString() + ' - ' + (purchase.endDate ? new Date(purchase.endDate).toLocaleDateString() : '進行中') + '</div>' +
+                '<div><i class="fas fa-clock mr-1"></i>時長: ' + purchase.duration + ' ' + getDurationUnitText(purchase.durationUnit) + '</div>' +
+                (purchase.notes ? '<div><i class="fas fa-sticky-note mr-1"></i>' + purchase.notes + '</div>' : '') +
+              '</div>' +
+            '</div>' +
+            '<div class="flex space-x-2 ml-4">' +
+              '<button class="edit-purchase btn-secondary text-white px-2 py-1 rounded text-xs" data-id="' + purchase.id + '">' +
+                '<i class="fas fa-edit mr-1"></i>編輯' +
+              '</button>' +
+              (purchases.length > 1 ? 
+                '<button class="delete-purchase btn-danger text-white px-2 py-1 rounded text-xs" data-id="' + purchase.id + '">' +
+                  '<i class="fas fa-trash mr-1"></i>刪除' +
+                '</button>' : 
+                '<span class="text-xs text-gray-500 px-2 py-1">最後一筆記錄</span>') +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      ).join('');
+      
+      // 添加事件監聽器
+      container.querySelectorAll('.edit-purchase').forEach(btn => {
+        btn.addEventListener('click', editPurchase);
+      });
+      
+      container.querySelectorAll('.delete-purchase').forEach(btn => {
+        btn.addEventListener('click', deletePurchase);
+      });
+    }
+
+    // 獲取時長單位文本
+    function getDurationUnitText(unit) {
+      const unitMap = { day: '天', month: '月', year: '年' };
+      return unitMap[unit] || unit;
+    }
+
+    // 新增購買記錄
+    function addPurchase() {
+      document.getElementById('purchaseModalTitle').textContent = '新增購買記錄';
+      document.getElementById('purchaseForm').reset();
+      document.getElementById('purchaseId').value = '';
+      
+      // 設定默認值
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('purchaseDate').value = today;
+      document.getElementById('startDate').value = today;
+      
+      document.getElementById('purchaseModal').classList.remove('hidden');
+    }
+
+    // 編輯購買記錄
+    async function editPurchase(e) {
+      const purchaseId = e.target.dataset.id || e.target.closest('button').dataset.id;
+      
+      try {
+        const response = await fetch('/api/purchases/' + purchaseId);
+        if (!response.ok) {
+          throw new Error('無法載入購買記錄');
+        }
+        
+        const purchase = await response.json();
+        
+        document.getElementById('purchaseModalTitle').textContent = '編輯購買記錄';
+        document.getElementById('purchaseId').value = purchase.id;
+        document.getElementById('purchaseDate').value = purchase.purchaseDate.split('T')[0];
+        document.getElementById('platform').value = purchase.platform;
+        document.getElementById('price').value = purchase.price;
+        document.getElementById('currency').value = purchase.currency;
+        document.getElementById('startDate').value = purchase.startDate.split('T')[0];
+        document.getElementById('duration').value = purchase.duration;
+        document.getElementById('durationUnit').value = purchase.durationUnit;
+        document.getElementById('purchaseNotes').value = purchase.notes || '';
+        
+        document.getElementById('purchaseModal').classList.remove('hidden');
+      } catch (error) {
+        console.error('載入購買記錄失敗:', error);
+        showToast('載入購買記錄失敗', 'error');
+      }
+    }
+
+    // 刪除購買記錄
+    async function deletePurchase(e) {
+      const purchaseId = e.target.dataset.id || e.target.closest('button').dataset.id;
+      
+      if (!confirm('確定要刪除這筆購買記錄嗎？此操作不可恢復。')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/purchases/' + purchaseId, {
+          method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+          throw new Error('刪除失敗');
+        }
+        
+        showToast('購買記錄已刪除', 'success');
+        await loadPurchaseHistory();
+        await loadSubscriptionDetails(); // 更新統計信息
+      } catch (error) {
+        console.error('刪除購買記錄失敗:', error);
+        showToast('刪除購買記錄失敗', 'error');
+      }
+    }
+
+    // 保存購買記錄
+    async function savePurchase(e) {
+      e.preventDefault();
+      
+      const purchaseId = document.getElementById('purchaseId').value;
+      const isEdit = !!purchaseId;
+      
+      const purchaseData = {
+        purchaseDate: document.getElementById('purchaseDate').value,
+        platform: document.getElementById('platform').value,
+        price: parseFloat(document.getElementById('price').value),
+        currency: document.getElementById('currency').value,
+        startDate: document.getElementById('startDate').value,
+        duration: parseInt(document.getElementById('duration').value),
+        durationUnit: document.getElementById('durationUnit').value,
+        notes: document.getElementById('purchaseNotes').value.trim()
+      };
+      
+      try {
+        const url = isEdit ? '/api/purchases/' + purchaseId : '/api/subscriptions/' + subscriptionId + '/purchases';
+        const method = isEdit ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+          method: method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(purchaseData)
+        });
+        
+        if (!response.ok) {
+          throw new Error(isEdit ? '更新失敗' : '新增失敗');
+        }
+        
+        showToast(isEdit ? '購買記錄已更新' : '購買記錄已新增', 'success');
+        document.getElementById('purchaseModal').classList.add('hidden');
+        await loadPurchaseHistory();
+        await loadSubscriptionDetails(); // 更新統計信息
+      } catch (error) {
+        console.error('保存購買記錄失敗:', error);
+        showToast('保存購買記錄失敗', 'error');
+      }
+    }
+
+    // 頁面載入完成後執行
+    window.addEventListener('load', function() {
+      subscriptionId = getSubscriptionId();
+      
+      if (!subscriptionId) {
+        showToast('無效的訂閱 ID', 'error');
+        setTimeout(() => {
+          window.location.href = '/admin';
+        }, 2000);
+        return;
+      }
+      
+      loadSubscriptionDetails();
+      
+      // 事件監聽器
+      document.getElementById('addPurchaseBtn').addEventListener('click', addPurchase);
+      document.getElementById('purchaseForm').addEventListener('submit', savePurchase);
+      document.getElementById('closePurchaseModal').addEventListener('click', () => {
+        document.getElementById('purchaseModal').classList.add('hidden');
+      });
+      document.getElementById('cancelPurchaseBtn').addEventListener('click', () => {
+        document.getElementById('purchaseModal').classList.add('hidden');
+      });
+      
+      // 點擊背景關閉 Modal
+      document.getElementById('purchaseModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('purchaseModal')) {
+          document.getElementById('purchaseModal').classList.add('hidden');
+        }
+      });
+    });
   </script>
 </body>
 </html>
@@ -1287,7 +2212,7 @@ const configPage = `
 
 // 管理頁面
 const admin = {
-  async handleRequest(request, env, ctx) {
+  async handleRequest(request, env) {
     const url = new URL(request.url);
     const pathname = url.pathname;
     
@@ -1316,7 +2241,7 @@ const admin = {
 
 // 處理API請求
 const api = {
-  async handleRequest(request, env, ctx) {
+  async handleRequest(request, env) {
     const url = new URL(request.url);
     const path = url.pathname.slice(4);
     const method = request.method;
@@ -1727,6 +2652,22 @@ const api = {
       const parts = path.split('/');
       const purchaseId = parts[2];
       
+      if (method === 'GET') {
+        // GET /api/purchases/:purchaseId
+        try {
+          const purchase = await getPurchase(purchaseId, env);
+          return new Response(
+            JSON.stringify(purchase),
+            { headers: { 'Content-Type': 'application/json' } }
+          );
+        } catch (error) {
+          return new Response(
+            JSON.stringify({ success: false, message: '獲取購買記錄失敗: ' + error.message }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+      
       if (method === 'PUT') {
         // PUT /api/purchases/:purchaseId
         try {
@@ -1836,7 +2777,60 @@ async function verifyJWT(token, secret) {
 async function getAllSubscriptions(env) {
   try {
     const data = await env.SUBSCRIPTIONS_KV.get('subscriptions');
-    return data ? JSON.parse(data) : [];
+    let subscriptions = data ? JSON.parse(data) : [];
+    
+    // Auto-fix empty purchase history for existing subscriptions
+    let needsUpdate = false;
+    subscriptions = subscriptions.map(subscription => {
+      // Check if subscription has currentPlan data but empty purchaseHistory
+      if (subscription.currentPlan && 
+          (!subscription.purchaseHistory || subscription.purchaseHistory.length === 0)) {
+        
+        // Create initial purchase record from currentPlan data
+        const initialPurchase = {
+          id: `purchase_${Date.now().toString()}_${Math.random().toString(36).slice(2, 11)}`,
+          purchaseDate: subscription.startDate || subscription.createdAt || new Date().toISOString().split('T')[0],
+          startDate: subscription.startDate || subscription.createdAt || new Date().toISOString().split('T')[0],
+          endDate: subscription.expiryDate || null,
+          price: subscription.currentPlan.price || 0,
+          currency: subscription.currentPlan.currency || 'TWD',
+          platform: subscription.currentPlan.platform || '未指定',
+          duration: subscription.currentPlan.periodValue || 1,
+          durationUnit: subscription.currentPlan.periodUnit || 'month',
+          notes: 'Auto-generated from current plan data'
+        };
+        
+        // Initialize purchaseHistory with the initial purchase
+        subscription.purchaseHistory = [initialPurchase];
+        subscription.updatedAt = new Date().toISOString();
+        needsUpdate = true;
+      }
+      
+      // 清理舊的匯率數據格式 - 移除完整的匯率數據，只保留必要信息
+      if (subscription.currentPlan && subscription.currentPlan.exchangeRateAtPurchase) {
+        const exchangeData = subscription.currentPlan.exchangeRateAtPurchase;
+        if (exchangeData.rates && Object.keys(exchangeData.rates).length > 10) {
+          // 如果有完整的匯率數據（很多貨幣），則簡化為只保留必要信息
+          subscription.currentPlan.exchangeRateAtPurchase = {
+            date: exchangeData.date,
+            fromCurrency: exchangeData.fromCurrency,
+            toCurrency: exchangeData.toCurrency,
+            rate: exchangeData.rate
+          };
+          subscription.updatedAt = new Date().toISOString();
+          needsUpdate = true;
+        }
+      }
+      
+      return subscription;
+    });
+    
+    // Save updated subscriptions back to KV if any were modified
+    if (needsUpdate) {
+      await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
+    }
+    
+    return subscriptions;
   } catch (error) {
     return [];
   }
@@ -1871,6 +2865,25 @@ async function createSubscription(subscription, env) {
       subscription.expiryDate = expiryDate.toISOString();
     }
     
+    // 獲取當前匯率信息
+    let exchangeRateInfo = null;
+    if (subscription.currency && subscription.currency !== 'TWD') {
+      try {
+        const ratesResponse = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+        const ratesData = await ratesResponse.json();
+        if (ratesData.rates) {
+          exchangeRateInfo = {
+            date: new Date().toISOString(),
+            fromCurrency: subscription.currency,
+            toCurrency: 'TWD',
+            rate: ratesData.rates.TWD / ratesData.rates[subscription.currency]
+          };
+        }
+      } catch (error) {
+        console.log('獲取匯率失敗，但不影響訂閱創建');
+      }
+    }
+    
     const newSubscription = {
       id: Date.now().toString(),
       name: subscription.name,
@@ -1882,9 +2895,23 @@ async function createSubscription(subscription, env) {
         currency: subscription.currency || 'TWD',
         platform: subscription.platform || '未指定',
         periodValue: subscription.periodValue || 1,
-        periodUnit: subscription.periodUnit || 'month'
+        periodUnit: subscription.periodUnit || 'month',
+        exchangeRateAtPurchase: exchangeRateInfo
       },
-      purchaseHistory: [],
+      purchaseHistory: [
+        {
+          id: `purchase_${Date.now().toString()}_${Date.now()}`,
+          purchaseDate: subscription.startDate || new Date().toISOString().split('T')[0],
+          startDate: subscription.startDate || new Date().toISOString().split('T')[0],
+          endDate: subscription.expiryDate || null,
+          price: subscription.price || 0,
+          currency: subscription.currency || 'TWD',
+          platform: subscription.platform || '未指定',
+          duration: subscription.periodValue || 1,
+          durationUnit: subscription.periodUnit || 'month',
+          notes: '建立訂閱時的初始購買記錄'
+        }
+      ],
       statistics: {
         totalSpent: subscription.price || 0,
         totalMonths: subscription.periodValue || 1,
@@ -1952,6 +2979,31 @@ async function updateSubscription(id, subscription, env) {
       };
     }
     
+    // 檢查價格或貨幣是否有變化，如果有則獲取新匯率
+    const currentPrice = subscriptions[index].currentPlan.price;
+    const currentCurrency = subscriptions[index].currentPlan.currency;
+    const newPrice = subscription.price !== undefined ? subscription.price : currentPrice;
+    const newCurrency = subscription.currency || currentCurrency || 'TWD';
+    
+    let exchangeRateInfo = subscriptions[index].currentPlan.exchangeRateAtPurchase;
+    if ((newPrice !== currentPrice || newCurrency !== currentCurrency) && newCurrency !== 'TWD') {
+      try {
+        const ratesResponse = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+        const ratesData = await ratesResponse.json();
+        if (ratesData.rates) {
+          exchangeRateInfo = {
+            date: new Date().toISOString(),
+            rates: ratesData.rates,
+            fromCurrency: newCurrency,
+            toCurrency: 'TWD',
+            rate: ratesData.rates.TWD / ratesData.rates[newCurrency]
+          };
+        }
+      } catch (error) {
+        console.log('獲取匯率失敗，但不影響訂閱更新');
+      }
+    }
+    
     subscriptions[index] = {
       ...subscriptions[index],
       name: subscription.name,
@@ -1959,11 +3011,12 @@ async function updateSubscription(id, subscription, env) {
       currentPlan: {
         startDate: subscription.startDate || subscriptions[index].currentPlan.startDate,
         expiryDate: subscription.expiryDate,
-        price: subscription.price !== undefined ? subscription.price : subscriptions[index].currentPlan.price,
-        currency: subscription.currency || subscriptions[index].currentPlan.currency || 'TWD',
+        price: newPrice,
+        currency: newCurrency,
         platform: subscription.platform || subscriptions[index].currentPlan.platform || '未指定',
         periodValue: subscription.periodValue || subscriptions[index].currentPlan.periodValue || 1,
-        periodUnit: subscription.periodUnit || subscriptions[index].currentPlan.periodUnit || 'month'
+        periodUnit: subscription.periodUnit || subscriptions[index].currentPlan.periodUnit || 'month',
+        exchangeRateAtPurchase: exchangeRateInfo
       },
       reminderDays: subscription.reminderDays !== undefined ? subscription.reminderDays : (subscriptions[index].reminderDays !== undefined ? subscriptions[index].reminderDays : 7),
       notes: subscription.notes || '',
@@ -2028,15 +3081,31 @@ async function getSubscriptionPurchases(subscriptionId, env) {
   try {
     const subscription = await getSubscription(subscriptionId, env);
     if (!subscription) {
-      return { success: false, message: '未找到該訂閱' };
+      throw new Error('未找到該訂閱');
     }
     
-    return {
-      success: true,
-      data: subscription.purchaseHistory || []
-    };
+    return subscription.purchaseHistory || [];
   } catch (error) {
-    return { success: false, message: '獲取購買記錄失敗: ' + error.message };
+    throw new Error('獲取購買記錄失敗: ' + error.message);
+  }
+}
+
+async function getPurchase(purchaseId, env) {
+  try {
+    const subscriptions = await getAllSubscriptions(env);
+    
+    for (const subscription of subscriptions) {
+      if (subscription.purchaseHistory) {
+        const purchase = subscription.purchaseHistory.find(p => p.id === purchaseId);
+        if (purchase) {
+          return purchase;
+        }
+      }
+    }
+    
+    throw new Error('購買記錄不存在');
+  } catch (error) {
+    throw new Error('獲取購買記錄失敗: ' + error.message);
   }
 }
 
@@ -2278,7 +3347,7 @@ async function testSingleSubscriptionNotification(id, env) {
   }
 }
 
-async function sendWeComNotification(message, config) {
+async function sendWeComNotification() {
     // This is a placeholder. In a real scenario, you would implement the WeCom notification logic here.
     console.log("[企業微信] 通知功能未实现");
     return { success: false, message: "企業微信通知功能未实现" };
@@ -2530,7 +3599,17 @@ function getCookieValue(cookieString, key) {
   return match ? match[2] : null;
 }
 
-async function handleRequest(request, env, ctx) {
+async function handleRequest(request) {
+  const url = new URL(request.url);
+  
+  // 處理詳情頁面
+  if (url.pathname === '/details') {
+    return new Response(detailsPage, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    });
+  }
+  
+  // 默認返回登錄頁面
   return new Response(loginPage, {
     headers: { 'Content-Type': 'text/html; charset=utf-8' }
   });
@@ -2571,11 +3650,11 @@ export default {
     } else if (url.pathname.startsWith('/admin')) {
       return admin.handleRequest(request, env, ctx);
     } else {
-      return handleRequest(request, env, ctx);
+      return handleRequest(request);
     }
   },
   
-  async scheduled(event, env, ctx) {
+  async scheduled(_event, env) {
     console.log('[Workers] 定時任務觸發時間:', new Date().toISOString());
     await checkExpiringSubscriptions(env);
   }

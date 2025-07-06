@@ -1,90 +1,178 @@
-# SubsTracker - 订阅管理与提醒系统
+# SubsTracker V5 - 智能訂閱管理系統
 
-基于Cloudflare Workers的轻量级订阅管理系统，帮助您轻松跟踪各类订阅服务的到期时间，并通过Telegram,微信等发送及时提醒。
+基於Cloudflare Workers的企業級訂閱管理系統，集成多平台價格比較、歷史購買記錄追蹤、實時匯率轉換等進階功能，提供完整的訂閱服務財務分析解決方案。
 
 ![image](https://github.com/user-attachments/assets/22ff1592-7836-4f73-aa13-24e9d43d7064)
 
+## ✨ V5 核心特性
 
-## ✨ 特性
+### 📊 智能財務管理
+- 💰 **多貨幣支持**: TWD、USD、CNY、EUR、JPY等多種貨幣
+- 📈 **實時匯率轉換**: 自動獲取並顯示當前匯率
+- 📋 **購買歷史追蹤**: 完整記錄每次購買的詳細信息
+- 🏷️ **平台價格比較**: 淘寶、蝦皮、官方等平台價格對比
+- 📊 **月費標準化**: 統一顯示月均費用便於比較
 
-- 🔔 **自动提醒**: 在订阅到期前自动发送Telegram通知
-- 📊 **订阅管理**: 直观的Web界面管理所有订阅
-- 🔄 **周期计算**: 智能计算循环订阅的下一个周期
-- 📱 **响应式设计**: 完美适配移动端和桌面设备
-- ☁️ **免服务器**: 基于Cloudflare Workers，无需自建服务器
-- 🔒 **安全可靠**: 数据存储在Cloudflare KV中，安全且高效
+### 🎯 訂閱管理增強
+- 🔔 **智能提醒系統**: Telegram、NotifyX、微信多通道通知
+- 📱 **服務詳情頁面**: 每個訂閱的完整歷史和統計分析
+- ⚡ **快速操作**: 簡化的列表界面，高效的編輯體驗
+- 🔄 **自動續訂標記**: 清晰的續訂狀態顯示
 
-## 版本更新
-V0: TG通知 
+### 🛠️ 系統特性
+- ☁️ **Serverless架構**: 基於Cloudflare Workers，全球部署
+- 🔒 **安全認證**: JWT token認證，HttpOnly cookies
+- 📱 **響應式設計**: 完美適配各種設備螢幕
+- 🚀 **高效能**: 極速載入，流暢體驗
 
-v1: TG通知+NotifyX通知 
+## 📈 版本更新歷史
 
-V2: 
+### V5 (2025-07) - 智能財務管理
+**🎯 重大功能更新**
+- ✅ **歷史購買記錄系統**: 完整的購買歷史 CRUD 管理
+- ✅ **實時匯率整合**: ExchangeRate API 集成，自動匯率轉換
+- ✅ **多平台價格比較**: 淘寶、蝦皮、官方等平台價格追蹤
+- ✅ **月費標準化顯示**: 統一 TWD/M 格式便於比較
+- ✅ **服務詳情頁面**: 個別訂閱的完整歷史時間軸
+- ✅ **購買時匯率儲存**: 準確的歷史成本計算
+- ✅ **統計分析功能**: 自動計算平均費用、最佳優惠等
+- ✅ **匯率管理介面**: API 狀態檢查、手動更新功能
 
-✅ 订阅列表按到期日期升序排序 
+**🔧 系統優化**
+- ✅ **Modal 互動優化**: 防止意外關閉，改善使用者體驗
+- ✅ **按鈕狀態管理**: 完善的載入狀態和錯誤處理
+- ✅ **資料自動遷移**: 向後相容，自動修復資料結構
+- ✅ **程式碼優化**: 移除未使用變數，提升效能
 
-✅ 修复了提醒天数逻辑（reminderDays: 0 只在到期日提醒） 
+### V4 (2025-06) - 介面優化
+- ✅ **手機響應式設計**: 改善移動設備顯示效果
 
-✅ 添加了自动续费切换功能（autoRenew 字段） 
+### V3 (2025-05) - 價格功能基礎
+- ✅ **基礎價格支援**: 價格欄位與貨幣選擇
+- ✅ **匯率轉換**: 基本匯率顯示功能
+- ✅ **資料結構升級**: 支援 currentPlan 和 purchaseHistory
 
-✅ 增强了测试通知功能（在配置页面独立测试按钮） 
+### V2 (2024) - 系統穩定性
+- ✅ **排序優化**: 訂閱列表按到期日期升序排序
+- ✅ **提醒邏輯修復**: reminderDays: 0 只在到期日提醒
+- ✅ **自動續費功能**: autoRenew 欄位切換
+- ✅ **測試通知增強**: 配置頁面獨立測試按鈕
+- ✅ **Toast 通知系統**: 使用者反饋提示
+- ✅ **表單驗證**: 完整的錯誤處理機制
+- ✅ **安全配置**: 敏感資訊保護
 
-✅ 实现了Toast通知系统 
+### V1 - 多通道通知
+- ✅ **NotifyX 整合**: 除 Telegram 外的第二通知管道
 
-✅ 表单验证和错误处理 
+### V0 - 基礎版本
+- ✅ **Telegram 通知**: 基礎的到期提醒功能 
 
-✅ 安全配置（不返回敏感信息） 
+## 🚀 V5 部署指南
 
-## 🚀 部署指南
+### 📋 前提條件
 
-### 前提条件
+- **Cloudflare 帳戶** (免費方案即可)
+- **通知服務** (可選)：
+  - Telegram Bot Token (推薦)
+  - NotifyX API Key
+- **匯率服務** (可選)：
+  - ExchangeRate API Key (免費額度充足)
 
-- Cloudflare账户
-- Telegram Bot (用于发送通知)
-- 可以直接将代码丢给AI,帮助查漏补缺
+### 🔧 部署步驟
 
-### 部署步骤
+#### 1. 創建 Cloudflare Worker
+- 登入 Cloudflare Dashboard
+- 創建新的 Worker
+- 複製 `index_v5.js` 的完整程式碼
+- 點擊「部署」
 
-1.登陆cloudflare,创建worker,粘贴本项目中的js代码,点击部署
+#### 2. 設定 KV 存儲
+創建以下 KV 命名空間：
+- **SUBSCRIPTIONS_KV** (必需) - 主要資料存儲（包含匯率快取）
 
-![image](https://github.com/user-attachments/assets/ff4ac794-01e1-4916-b226-1f4f604dcbd3)
+#### 3. 綁定 Worker 變數
+在 Worker 設定中綁定：
+- **KV 命名空間綁定**：`SUBSCRIPTIONS_KV`
+- **Cron 觸發器**：`0 9 * * *` (每日上午9點檢查)
+
+#### 4. 環境變數設定 (可選)
+```
+EXCHANGE_RATE_API_KEY=your_api_key
+DEFAULT_CURRENCY=TWD
+```
+
+#### 5. 初始登入
+- 開啟 Worker 提供的網域
+- 預設帳號密碼：`admin` / `password`
+- 首次登入後請立即修改密碼
+
+#### 6. 系統配置
+前往「系統設定」完成：
+- ✅ 修改管理員帳號密碼
+- ✅ 配置 Telegram Bot 資訊
+- ✅ 設定通知偏好
+- ✅ 測試匯率 API 狀態
+- ✅ 發送測試通知確認功能
 
 
-2.创建KV键值 **SUBSCRIPTIONS_KV**
+## 📚 主要功能預覽
 
-![image](https://github.com/user-attachments/assets/c9ebaf3e-6015-4400-bb0a-1a55fd5e14d2)
+### 💰 財務管理
+- **多貨幣訂閱管理** - 支援 TWD、USD、CNY、EUR、JPY
+- **實時匯率轉換** - 自動更新匯率，準確成本計算
+- **購買歷史追蹤** - 完整記錄每次購買詳情
+- **平台價格比較** - 比較不同平台的價格優勢
+- **統計分析報表** - 自動計算平均費用和最佳優惠
 
+### 📱 訂閱管理
+- **智能提醒系統** - 多通道到期提醒
+- **服務詳情頁面** - 個別訂閱的完整歷史
+- **批量操作** - 高效管理大量訂閱
+- **自動續訂標記** - 清晰的續訂狀態
 
-3.给worker绑定上键值对,以及设置定时执行时间!
+### ⚙️ 系統管理
+- **匯率管理介面** - API 狀態監控和手動更新
+- **通知測試功能** - 確保提醒系統正常運作
+- **資料自動遷移** - 無痛升級，向後相容
+- **安全認證系統** - JWT token 保護
 
-![image](https://github.com/user-attachments/assets/25b663b3-8e8e-4386-a499-9b6bf12ead76)
+## 🎯 適用場景
 
+- **個人用戶**: 管理 Netflix、Spotify 等個人訂閱
+- **家庭用戶**: 追蹤家庭共享的各種服務
+- **小型企業**: 管理 SaaS 工具和軟體授權
+- **自由工作者**: 控制工作相關的訂閱成本
 
-4.打开worker提供的域名地址,输入默认账号密码: admin  password (或者admin admin123),可以在代码中查看默认账号密码!
+## 📖 文檔
 
-![image](https://github.com/user-attachments/assets/5dac1ce0-43a3-4642-925c-d9cf21076454)
+- [V5 使用指南](./USAGE_GUIDE_V5.md) - 詳細的功能說明和操作教學
+- [API 文檔](./API.md) - 完整的 API 介面說明
+- [常見問題](./FAQ.md) - 疑難排解和最佳實踐
 
+## 💝 贊助
 
-5.前往系统配置,修改账号密码,以及配置tg通知的信息
-
-![image](https://github.com/user-attachments/assets/f6db2089-28a1-439d-9de0-412ee4b2807f)
-
-
-6.配置完成可以点击测试通知,查看是否能够正常通知,然后就可以正常添加订阅使用了!
-
-![image](https://github.com/user-attachments/assets/af530379-332c-4482-9e6e-229a9e24775e)
-
-
-## 赞助
-本项目的 CDN 加速和安全保护由腾讯 EdgeOne 赞助。
+本項目的 CDN 加速和安全保護由騰訊 EdgeOne 贊助。  
 [Best Asian CDN, Edge, and Secure Solutions - Tencent EdgeOne](https://edgeone.ai/?from=github)
-![image](https://edgeone.ai/media/34fe3a45-492d-4ea4-ae5d-ea1087ca7b4b.png)
 
-## 🤝 贡献
+## 🤝 貢獻
 
-欢迎贡献代码、报告问题或提出新功能建议!
+歡迎貢獻程式碼、回報問題或提出新功能建議！
 
-## 📜 许可证
+### 如何貢獻
+1. Fork 此 repository
+2. 創建 feature branch (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. Push 到 branch (`git push origin feature/AmazingFeature`)
+5. 開啟 Pull Request
 
-MIT License
+## 📞 支援
+
+如果您在使用過程中遇到問題：
+1. 查看[使用指南](./USAGE_GUIDE_V5.md)
+2. 搜尋[已知問題](https://github.com/your-repo/issues)
+3. 創建新的 Issue 描述問題
+
+## 📜 授權
+
+MIT License - 詳見 [LICENSE](./LICENSE) 檔案
 
