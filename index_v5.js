@@ -417,6 +417,30 @@ const adminPage = `
   </div>
 
   <script>
+    // 台北時間轉換函數
+    function toTaipeiTime(date = new Date()) {
+      const taipeiOffset = 8 * 60; // UTC+8 in minutes
+      const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+      return new Date(utc + (taipeiOffset * 60000));
+    }
+
+    // 格式化台北時間
+    function formatTaipeiTime(date = new Date(), options = {}) {
+      const taipeiTime = toTaipeiTime(date);
+      if (options.dateOnly) {
+        return taipeiTime.toLocaleDateString('zh-TW');
+      } else if (options.timeOnly) {
+        return taipeiTime.toLocaleTimeString('zh-TW');
+      } else {
+        return taipeiTime.toLocaleString('zh-TW');
+      }
+    }
+
+    // 取得台北時間的ISO字串
+    function toTaipeiISOString(date = new Date()) {
+      return toTaipeiTime(date).toISOString();
+    }
+
     function showToast(message, type = 'success', duration = 3000) {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
@@ -690,9 +714,9 @@ const adminPage = `
               '</div>' +
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap">' + 
-              '<div class="text-sm text-gray-900">' + new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate).toLocaleDateString() + '</div>' +
+              '<div class="text-sm text-gray-900">' + formatTaipeiTime(new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate), {dateOnly: true}) + '</div>' +
               '<div class="text-xs text-gray-500">' + (daysDiff < 0 ? '已過期' + Math.abs(daysDiff) + '天' : '還剩' + daysDiff + '天') + '</div>' +
-              ((subscription.currentPlan?.startDate || subscription.startDate) ? '<div class="text-xs text-gray-500">開始: ' + new Date(subscription.currentPlan?.startDate || subscription.startDate).toLocaleDateString() + '</div>' : '') +
+              ((subscription.currentPlan?.startDate || subscription.startDate) ? '<div class="text-xs text-gray-500">開始: ' + formatTaipeiTime(new Date(subscription.currentPlan?.startDate || subscription.startDate), {dateOnly: true}) + '</div>' : '') +
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap">' + 
               '<div class="text-sm text-gray-900">' + 
@@ -807,7 +831,7 @@ const adminPage = `
       document.getElementById('subscriptionId').value = '';
       clearFieldErrors();
       
-      const today = new Date().toISOString().split('T')[0];
+      const today = toTaipeiISOString().split('T')[0];
       document.getElementById('startDate').value = today;
       document.getElementById('reminderDays').value = '7';
       document.getElementById('isActive').checked = true;
@@ -1108,8 +1132,7 @@ const configPage = `
       border-color: #6366f1; 
     }
     .config-section.inactive { 
-      background-color: #f9fafb; 
-      opacity: 0.7; 
+      display: none; 
     }
   </style>
 </head>
@@ -1162,7 +1185,7 @@ const configPage = `
           <h3 class="text-lg font-medium text-gray-900 mb-4">通知設置</h3>
           <div class="mb-6">
             <label class="block text-sm font-medium text-gray-700 mb-3">通知方式</label>
-            <div class="flex space-x-6">
+            <div class="flex flex-wrap space-x-6">
               <label class="inline-flex items-center">
                 <input type="radio" name="notificationType" value="telegram" class="form-radio h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
                 <span class="ml-2 text-sm text-gray-700">Telegram</span>
@@ -1170,6 +1193,10 @@ const configPage = `
               <label class="inline-flex items-center">
                 <input type="radio" name="notificationType" value="notifyx" class="form-radio h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked>
                 <span class="ml-2 text-sm text-gray-700 font-semibold">NotifyX（推荐）</span>
+              </label>
+              <label class="inline-flex items-center">
+                <input type="radio" name="notificationType" value="webhook" class="form-radio h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                <span class="ml-2 text-sm text-gray-700">Webhook</span>
               </label>
               <a href="https://www.notifyx.cn/" target="_blank" class="text-indigo-600 hover:text-indigo-800 text-sm">
                 <i class="fas fa-external-link-alt ml-1"></i> NotifyX官网
@@ -1206,6 +1233,25 @@ const configPage = `
             <div class="flex justify-end">
               <button type="button" id="testNotifyXBtn" class="btn-secondary text-white px-4 py-2 rounded-md text-sm font-medium">
                 <i class="fas fa-paper-plane mr-2"></i>測試 NotifyX 通知
+              </button>
+            </div>
+          </div>
+          
+          <div id="webhookConfig" class="config-section">
+            <h4 class="text-md font-medium text-gray-900 mb-3">Webhook 配置</h4>
+            <div class="mb-4">
+              <label for="webhookUrl" class="block text-sm font-medium text-gray-700">Webhook URL</label>
+              <input type="url" id="webhookUrl" placeholder="https://your-n8n-instance.com/webhook/subscription-alert" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+              <p class="mt-1 text-sm text-gray-500">n8n 工作流的 webhook URL，到期時會發送 POST 請求</p>
+            </div>
+            <div class="mb-4">
+              <label for="webhookSecret" class="block text-sm font-medium text-gray-700">Secret Key（可選）</label>
+              <input type="password" id="webhookSecret" placeholder="用於驗證 webhook 來源的密鑰" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+              <p class="mt-1 text-sm text-gray-500">可選的密鑰，用於驗證 webhook 請求的來源</p>
+            </div>
+            <div class="flex justify-end">
+              <button type="button" id="testWebhookBtn" class="btn-secondary text-white px-4 py-2 rounded-md text-sm font-medium">
+                <i class="fas fa-paper-plane mr-2"></i>測試 Webhook 通知
               </button>
             </div>
           </div>
@@ -1283,6 +1329,30 @@ const configPage = `
   </div>
 
   <script>
+    // 台北時間轉換函數
+    function toTaipeiTime(date = new Date()) {
+      const taipeiOffset = 8 * 60; // UTC+8 in minutes
+      const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+      return new Date(utc + (taipeiOffset * 60000));
+    }
+
+    // 格式化台北時間
+    function formatTaipeiTime(date = new Date(), options = {}) {
+      const taipeiTime = toTaipeiTime(date);
+      if (options.dateOnly) {
+        return taipeiTime.toLocaleDateString('zh-TW');
+      } else if (options.timeOnly) {
+        return taipeiTime.toLocaleTimeString('zh-TW');
+      } else {
+        return taipeiTime.toLocaleString('zh-TW');
+      }
+    }
+
+    // 取得台北時間的ISO字串
+    function toTaipeiISOString(date = new Date()) {
+      return toTaipeiTime(date).toISOString();
+    }
+
     function showToast(message, type = 'success', duration = 3000) {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
@@ -1315,6 +1385,8 @@ const configPage = `
         document.getElementById('tgBotToken').value = config.TG_BOT_TOKEN || '';
         document.getElementById('tgChatId').value = config.TG_CHAT_ID || '';
         document.getElementById('notifyxApiKey').value = config.NOTIFYX_API_KEY || '';
+        document.getElementById('webhookUrl').value = config.WEBHOOK_URL || '';
+        document.getElementById('webhookSecret').value = config.WEBHOOK_SECRET || '';
         
         const notificationType = config.NOTIFICATION_TYPE || 'notifyx';
         document.querySelector('input[name="notificationType"][value="' + notificationType + '"]').checked = true;
@@ -1329,17 +1401,26 @@ const configPage = `
     function toggleNotificationConfig(type) {
       const telegramConfig = document.getElementById('telegramConfig');
       const notifyxConfig = document.getElementById('notifyxConfig');
+      const webhookConfig = document.getElementById('webhookConfig');
       
+      // 重置所有配置為 inactive
+      telegramConfig.classList.remove('active');
+      telegramConfig.classList.add('inactive');
+      notifyxConfig.classList.remove('active');
+      notifyxConfig.classList.add('inactive');
+      webhookConfig.classList.remove('active');
+      webhookConfig.classList.add('inactive');
+      
+      // 啟用選中的配置
       if (type === 'telegram') {
         telegramConfig.classList.remove('inactive');
         telegramConfig.classList.add('active');
-        notifyxConfig.classList.remove('active');
-        notifyxConfig.classList.add('inactive');
       } else if (type === 'notifyx') {
-        telegramConfig.classList.remove('active');
-        telegramConfig.classList.add('inactive');
         notifyxConfig.classList.remove('inactive');
         notifyxConfig.classList.add('active');
+      } else if (type === 'webhook') {
+        webhookConfig.classList.remove('inactive');
+        webhookConfig.classList.add('active');
       }
     }
     
@@ -1357,6 +1438,8 @@ const configPage = `
         TG_BOT_TOKEN: document.getElementById('tgBotToken').value.trim(),
         TG_CHAT_ID: document.getElementById('tgChatId').value.trim(),
         NOTIFYX_API_KEY: document.getElementById('notifyxApiKey').value.trim(),
+        WEBHOOK_URL: document.getElementById('webhookUrl').value.trim(),
+        WEBHOOK_SECRET: document.getElementById('webhookSecret').value.trim(),
         NOTIFICATION_TYPE: document.querySelector('input[name="notificationType"]:checked').value
       };
       
@@ -1395,9 +1478,9 @@ const configPage = `
     });
     
     async function testNotification(type) {
-      const button = document.getElementById(type === 'telegram' ? 'testTelegramBtn' : 'testNotifyXBtn');
+      const button = document.getElementById(type === 'telegram' ? 'testTelegramBtn' : (type === 'notifyx' ? 'testNotifyXBtn' : 'testWebhookBtn'));
       const originalContent = button.innerHTML;
-      const serviceName = type === 'telegram' ? 'Telegram' : 'NotifyX';
+      const serviceName = type === 'telegram' ? 'Telegram' : (type === 'notifyx' ? 'NotifyX' : 'Webhook');
       
       button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>測試中...';
       button.disabled = true;
@@ -1413,11 +1496,21 @@ const configPage = `
           button.disabled = false;
           return;
         }
-      } else {
+      } else if (type === 'notifyx') {
         config.NOTIFYX_API_KEY = document.getElementById('notifyxApiKey').value.trim();
         
         if (!config.NOTIFYX_API_KEY) {
           showToast('請先填寫 NotifyX API Key', 'warning');
+          button.innerHTML = originalContent;
+          button.disabled = false;
+          return;
+        }
+      } else if (type === 'webhook') {
+        config.WEBHOOK_URL = document.getElementById('webhookUrl').value.trim();
+        config.WEBHOOK_SECRET = document.getElementById('webhookSecret').value.trim();
+        
+        if (!config.WEBHOOK_URL) {
+          showToast('請先填寫 Webhook URL', 'warning');
           button.innerHTML = originalContent;
           button.disabled = false;
           return;
@@ -1455,6 +1548,10 @@ const configPage = `
       testNotification('notifyx');
     });
     
+    document.getElementById('testWebhookBtn').addEventListener('click', () => {
+      testNotification('webhook');
+    });
+    
     // 檢查匯率 API 狀態
     async function checkExchangeRateApiStatus() {
       const statusIndicator = document.getElementById('apiStatusIndicator');
@@ -1474,7 +1571,7 @@ const configPage = `
           statusIndicator.innerHTML = '<div class="w-3 h-3 bg-green-400 rounded-full mr-2"></div><span class="text-sm text-green-600">API 正常</span>';
           
           // 更新匯率信息
-          document.getElementById('lastUpdated').textContent = new Date(result.data.lastUpdated).toLocaleString('zh-TW');
+          document.getElementById('lastUpdated').textContent = formatTaipeiTime(new Date(result.data.lastUpdated));
           document.getElementById('dataSource').textContent = result.data.source;
           
           // 更新當前匯率顯示
@@ -1524,7 +1621,7 @@ const configPage = `
           showToast('匯率更新成功', 'success');
           
           // 更新顯示信息
-          document.getElementById('lastUpdated').textContent = new Date(result.data.lastUpdated).toLocaleString('zh-TW');
+          document.getElementById('lastUpdated').textContent = formatTaipeiTime(new Date(result.data.lastUpdated));
           document.getElementById('dataSource').textContent = result.data.source;
           
           // 更新當前匯率顯示
@@ -1830,6 +1927,30 @@ const detailsPage = `
     let subscriptionData = null;
     let exchangeRates = null;
 
+    // 台北時間轉換函數
+    function toTaipeiTime(date = new Date()) {
+      const taipeiOffset = 8 * 60; // UTC+8 in minutes
+      const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+      return new Date(utc + (taipeiOffset * 60000));
+    }
+
+    // 格式化台北時間
+    function formatTaipeiTime(date = new Date(), options = {}) {
+      const taipeiTime = toTaipeiTime(date);
+      if (options.dateOnly) {
+        return taipeiTime.toLocaleDateString('zh-TW');
+      } else if (options.timeOnly) {
+        return taipeiTime.toLocaleTimeString('zh-TW');
+      } else {
+        return taipeiTime.toLocaleString('zh-TW');
+      }
+    }
+
+    // 取得台北時間的ISO字串
+    function toTaipeiISOString(date = new Date()) {
+      return toTaipeiTime(date).toISOString();
+    }
+
     // 從 URL 參數獲取訂閱 ID
     function getSubscriptionId() {
       const urlParams = new URLSearchParams(window.location.search);
@@ -2072,7 +2193,7 @@ const detailsPage = `
       document.getElementById('purchaseId').value = '';
       
       // 設定默認值
-      const today = new Date().toISOString().split('T')[0];
+      const today = toTaipeiISOString().split('T')[0];
       document.getElementById('purchaseDate').value = today;
       document.getElementById('startDate').value = today;
       
@@ -2218,24 +2339,24 @@ const admin = {
   async handleRequest(request, env) {
     const url = new URL(request.url);
     const pathname = url.pathname;
-    
+
     const token = getCookieValue(request.headers.get('Cookie'), 'token');
     const config = await getConfig(env);
     const user = token ? await verifyJWT(token, config.JWT_SECRET) : null;
-    
+
     if (!user) {
       return new Response('', {
         status: 302,
         headers: { 'Location': '/' }
       });
     }
-    
+
     if (pathname === '/admin/config') {
       return new Response(configPage, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
       });
     }
-    
+
     return new Response(adminPage, {
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
     });
@@ -2248,15 +2369,15 @@ const api = {
     const url = new URL(request.url);
     const path = url.pathname.slice(4);
     const method = request.method;
-    
+
     const config = await getConfig(env);
-    
+
     if (path === '/login' && method === 'POST') {
       const body = await request.json();
-      
+
       if (body.username === config.ADMIN_USERNAME && body.password === config.ADMIN_PASSWORD) {
         const token = await generateJWT(body.username, config.JWT_SECRET);
-        
+
         return new Response(
           JSON.stringify({ success: true }),
           {
@@ -2273,7 +2394,7 @@ const api = {
         );
       }
     }
-    
+
     if (path === '/logout' && (method === 'GET' || method === 'POST')) {
       return new Response('', {
         status: 302,
@@ -2283,17 +2404,17 @@ const api = {
         }
       });
     }
-    
+
     const token = getCookieValue(request.headers.get('Cookie'), 'token');
     const user = token ? await verifyJWT(token, config.JWT_SECRET) : null;
-    
+
     if (!user && path !== '/login') {
       return new Response(
         JSON.stringify({ success: false, message: '未授權訪問' }),
         { status: 401, headers: { 'Content-Type': 'application/json' } }
       );
     }
-    
+
     if (path === '/config') {
       if (method === 'GET') {
         const { JWT_SECRET, ADMIN_PASSWORD, ...safeConfig } = config;
@@ -2302,26 +2423,28 @@ const api = {
           { headers: { 'Content-Type': 'application/json' } }
         );
       }
-      
+
       if (method === 'POST') {
         try {
           const newConfig = await request.json();
-          
-          const updatedConfig = { 
+
+          const updatedConfig = {
             ...config,
             ADMIN_USERNAME: newConfig.ADMIN_USERNAME || config.ADMIN_USERNAME,
             TG_BOT_TOKEN: newConfig.TG_BOT_TOKEN || '',
             TG_CHAT_ID: newConfig.TG_CHAT_ID || '',
             NOTIFYX_API_KEY: newConfig.NOTIFYX_API_KEY || '',
+            WEBHOOK_URL: newConfig.WEBHOOK_URL || '',
+            WEBHOOK_SECRET: newConfig.WEBHOOK_SECRET || '',
             NOTIFICATION_TYPE: newConfig.NOTIFICATION_TYPE || config.NOTIFICATION_TYPE
           };
-          
+
           if (newConfig.ADMIN_PASSWORD) {
             updatedConfig.ADMIN_PASSWORD = newConfig.ADMIN_PASSWORD;
           }
-          
+
           await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify(updatedConfig));
-          
+
           return new Response(
             JSON.stringify({ success: true }),
             { headers: { 'Content-Type': 'application/json' } }
@@ -2334,21 +2457,21 @@ const api = {
         }
       }
     }
-    
+
     if (path === '/test-notification' && method === 'POST') {
       try {
         const body = await request.json();
         let success = false;
         let message = '';
-        
+
         if (body.type === 'telegram') {
           const testConfig = {
             ...config,
             TG_BOT_TOKEN: body.TG_BOT_TOKEN,
             TG_CHAT_ID: body.TG_CHAT_ID
           };
-          
-          const content = '*測試通知*\n\n這是一條測試通知，用於驗證Telegram通知功能是否正常工作。\n\n發送時間: ' + new Date().toLocaleString();
+
+          const content = '*測試通知*\n\n這是一條測試通知，用於驗證Telegram通知功能是否正常工作。\n\n發送時間: ' + formatTaipeiTime();
           success = await sendTelegramNotification(content, testConfig);
           message = success ? 'Telegram通知發送成功' : 'Telegram通知發送失敗，請檢查配置';
         } else if (body.type === 'notifyx') {
@@ -2356,15 +2479,28 @@ const api = {
             ...config,
             NOTIFYX_API_KEY: body.NOTIFYX_API_KEY
           };
-          
+
           const title = '測試通知';
-          const content = '## 這是一條測試通知\n\n用於驗證NotifyX通知功能是否正常工作。\n\n發送時間: ' + new Date().toLocaleString();
+          const content = '## 這是一條測試通知\n\n用於驗證NotifyX通知功能是否正常工作。\n\n發送時間: ' + formatTaipeiTime();
           const description = '測試NotifyX通知功能';
-          
+
           success = await sendNotifyXNotification(title, content, description, testConfig);
           message = success ? 'NotifyX通知發送成功' : 'NotifyX通知發送失敗，請檢查配置';
+        } else if (body.type === 'webhook') {
+          const testConfig = {
+            ...config,
+            WEBHOOK_URL: body.WEBHOOK_URL,
+            WEBHOOK_SECRET: body.WEBHOOK_SECRET
+          };
+
+          const title = '測試通知';
+          const content = '這是一條測試通知，用於驗證 Webhook 通知功能是否正常工作。';
+          const description = `測試 Webhook 通知功能 - 發送時間: ${formatTaipeiTime()}`;
+
+          success = await sendWebhookNotification(title, content, description, testConfig);
+          message = success ? 'Webhook通知發送成功' : 'Webhook通知發送失敗，請檢查配置和URL';
         }
-        
+
         return new Response(
           JSON.stringify({ success, message }),
           { headers: { 'Content-Type': 'application/json' } }
@@ -2377,19 +2513,19 @@ const api = {
         );
       }
     }
-    
+
     // Currency exchange rate endpoints
     if (path === '/currency/rates' && method === 'GET') {
       try {
         // 首先嘗試從 KV 獲取緩存的匯率
         const cachedRates = await env.SUBSCRIPTIONS_KV.get('currency_rates');
-        
+
         if (cachedRates) {
           const ratesData = JSON.parse(cachedRates);
           const now = new Date();
           const lastUpdated = new Date(ratesData.lastUpdated);
           const hoursDiff = (now - lastUpdated) / (1000 * 60 * 60);
-          
+
           // 如果緩存的匯率在24小時內，直接返回
           if (hoursDiff < 24) {
             return new Response(
@@ -2398,12 +2534,12 @@ const api = {
             );
           }
         }
-        
+
         // 如果沒有緩存或已過期，從 API 獲取最新匯率
         const apiKey = '1723cb21602885ad29fd3f13';
         const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`);
         const apiData = await response.json();
-        
+
         if (apiData.result === 'success') {
           const ratesData = {
             base: 'USD',
@@ -2411,10 +2547,10 @@ const api = {
             lastUpdated: new Date().toISOString(),
             source: 'exchangerate-api.com'
           };
-          
+
           // 緩存到 KV
           await env.SUBSCRIPTIONS_KV.put('currency_rates', JSON.stringify(ratesData));
-          
+
           return new Response(
             JSON.stringify({ success: true, data: ratesData }),
             { headers: { 'Content-Type': 'application/json' } }
@@ -2429,14 +2565,14 @@ const api = {
         );
       }
     }
-    
+
     if (path === '/currency/update' && method === 'POST') {
       try {
         // 強制更新匯率
         const apiKey = '1723cb21602885ad29fd3f13';
         const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`);
         const apiData = await response.json();
-        
+
         if (apiData.result === 'success') {
           const ratesData = {
             base: 'USD',
@@ -2444,12 +2580,12 @@ const api = {
             lastUpdated: new Date().toISOString(),
             source: 'exchangerate-api.com'
           };
-          
+
           await env.SUBSCRIPTIONS_KV.put('currency_rates', JSON.stringify(ratesData));
-          
+
           return new Response(
-            JSON.stringify({ 
-              success: true, 
+            JSON.stringify({
+              success: true,
               message: '匯率更新成功',
               data: ratesData
             }),
@@ -2465,23 +2601,23 @@ const api = {
         );
       }
     }
-    
+
     if (path === '/currency/convert' && method === 'POST') {
       try {
         const body = await request.json();
         const { amount, from, to } = body;
-        
+
         if (!amount || !from || !to) {
           return new Response(
             JSON.stringify({ success: false, message: '缺少必要參數: amount, from, to' }),
             { status: 400, headers: { 'Content-Type': 'application/json' } }
           );
         }
-        
+
         // 獲取最新匯率
         const ratesData = await env.SUBSCRIPTIONS_KV.get('currency_rates');
         let rates;
-        
+
         if (ratesData) {
           const parsed = JSON.parse(ratesData);
           rates = parsed.rates;
@@ -2490,14 +2626,14 @@ const api = {
           const apiKey = '1723cb21602885ad29fd3f13';
           const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`);
           const apiData = await response.json();
-          
+
           if (apiData.result === 'success') {
             rates = apiData.conversion_rates;
           } else {
             throw new Error('無法獲取匯率數據');
           }
         }
-        
+
         // 進行貨幣轉換 (所有匯率都基於 USD)
         let convertedAmount;
         if (from === 'USD') {
@@ -2509,10 +2645,10 @@ const api = {
           const usdAmount = amount / rates[from];
           convertedAmount = usdAmount * rates[to];
         }
-        
+
         return new Response(
-          JSON.stringify({ 
-            success: true, 
+          JSON.stringify({
+            success: true,
             convertedAmount: parseFloat(convertedAmount.toFixed(4)),
             originalAmount: amount,
             from,
@@ -2528,7 +2664,7 @@ const api = {
         );
       }
     }
-    
+
     if (path === '/subscriptions') {
       if (method === 'GET') {
         const subscriptions = await getAllSubscriptions(env);
@@ -2537,34 +2673,34 @@ const api = {
           { headers: { 'Content-Type': 'application/json' } }
         );
       }
-      
+
       if (method === 'POST') {
         const subscription = await request.json();
         const result = await createSubscription(subscription, env);
-        
+
         return new Response(
           JSON.stringify(result),
-          { 
-            status: result.success ? 201 : 400, 
-            headers: { 'Content-Type': 'application/json' } 
+          {
+            status: result.success ? 201 : 400,
+            headers: { 'Content-Type': 'application/json' }
           }
         );
       }
     }
-    
+
     if (path.startsWith('/subscriptions/')) {
       const parts = path.split('/');
       const id = parts[2];
-      
+
       if (parts[3] === 'toggle-status' && method === 'POST') {
         const body = await request.json();
         const result = await toggleSubscriptionStatus(id, body.isActive, env);
-        
+
         return new Response(
           JSON.stringify(result),
-          { 
-            status: result.success ? 200 : 400, 
-            headers: { 'Content-Type': 'application/json' } 
+          {
+            status: result.success ? 200 : 400,
+            headers: { 'Content-Type': 'application/json' }
           }
         );
       }
@@ -2573,47 +2709,47 @@ const api = {
         const result = await testSingleSubscriptionNotification(id, env);
         return new Response(JSON.stringify(result), { status: result.success ? 200 : 500, headers: { 'Content-Type': 'application/json' } });
       }
-      
+
       if (method === 'GET') {
         const subscription = await getSubscription(id, env);
-        
+
         return new Response(
           JSON.stringify(subscription),
           { headers: { 'Content-Type': 'application/json' } }
         );
       }
-      
+
       if (method === 'PUT') {
         const subscription = await request.json();
         const result = await updateSubscription(id, subscription, env);
-        
+
         return new Response(
           JSON.stringify(result),
-          { 
-            status: result.success ? 200 : 400, 
-            headers: { 'Content-Type': 'application/json' } 
+          {
+            status: result.success ? 200 : 400,
+            headers: { 'Content-Type': 'application/json' }
           }
         );
       }
-      
+
       if (method === 'DELETE') {
         const result = await deleteSubscription(id, env);
-        
+
         return new Response(
           JSON.stringify(result),
-          { 
-            status: result.success ? 200 : 400, 
-            headers: { 'Content-Type': 'application/json' } 
+          {
+            status: result.success ? 200 : 400,
+            headers: { 'Content-Type': 'application/json' }
           }
         );
       }
     }
-    
+
     // Purchase History endpoints
     if (path.startsWith('/subscriptions/') && path.includes('/purchases')) {
       const parts = path.split('/');
       const subscriptionId = parts[2];
-      
+
       if (parts[3] === 'purchases' && method === 'GET') {
         // GET /api/subscriptions/:id/purchases
         try {
@@ -2629,7 +2765,7 @@ const api = {
           );
         }
       }
-      
+
       if (parts[3] === 'purchases' && method === 'POST') {
         // POST /api/subscriptions/:id/purchases
         try {
@@ -2637,9 +2773,9 @@ const api = {
           const result = await createPurchase(subscriptionId, purchase, env);
           return new Response(
             JSON.stringify(result),
-            { 
-              status: result.success ? 201 : 400, 
-              headers: { 'Content-Type': 'application/json' } 
+            {
+              status: result.success ? 201 : 400,
+              headers: { 'Content-Type': 'application/json' }
             }
           );
         } catch (error) {
@@ -2650,11 +2786,11 @@ const api = {
         }
       }
     }
-    
+
     if (path.startsWith('/purchases/')) {
       const parts = path.split('/');
       const purchaseId = parts[2];
-      
+
       if (method === 'GET') {
         // GET /api/purchases/:purchaseId
         try {
@@ -2670,7 +2806,7 @@ const api = {
           );
         }
       }
-      
+
       if (method === 'PUT') {
         // PUT /api/purchases/:purchaseId
         try {
@@ -2678,9 +2814,9 @@ const api = {
           const result = await updatePurchase(purchaseId, purchase, env);
           return new Response(
             JSON.stringify(result),
-            { 
-              status: result.success ? 200 : 400, 
-              headers: { 'Content-Type': 'application/json' } 
+            {
+              status: result.success ? 200 : 400,
+              headers: { 'Content-Type': 'application/json' }
             }
           );
         } catch (error) {
@@ -2690,16 +2826,16 @@ const api = {
           );
         }
       }
-      
+
       if (method === 'DELETE') {
         // DELETE /api/purchases/:purchaseId
         try {
           const result = await deletePurchase(purchaseId, env);
           return new Response(
             JSON.stringify(result),
-            { 
-              status: result.success ? 200 : 400, 
-              headers: { 'Content-Type': 'application/json' } 
+            {
+              status: result.success ? 200 : 400,
+              headers: { 'Content-Type': 'application/json' }
             }
           );
         } catch (error) {
@@ -2710,7 +2846,7 @@ const api = {
         }
       }
     }
-    
+
     return new Response(
       JSON.stringify({ success: false, message: '未找到請求的資源' }),
       { status: 404, headers: { 'Content-Type': 'application/json' } }
@@ -2723,7 +2859,7 @@ async function getConfig(env) {
   try {
     const data = await env.SUBSCRIPTIONS_KV.get('config');
     const config = data ? JSON.parse(data) : {};
-    
+
     return {
       ADMIN_USERNAME: config.ADMIN_USERNAME || 'admin',
       ADMIN_PASSWORD: config.ADMIN_PASSWORD || 'password',
@@ -2731,6 +2867,8 @@ async function getConfig(env) {
       TG_BOT_TOKEN: config.TG_BOT_TOKEN || '',
       TG_CHAT_ID: config.TG_CHAT_ID || '',
       NOTIFYX_API_KEY: config.NOTIFYX_API_KEY || '',
+      WEBHOOK_URL: config.WEBHOOK_URL || '',
+      WEBHOOK_SECRET: config.WEBHOOK_SECRET || '',
       NOTIFICATION_TYPE: config.NOTIFICATION_TYPE || 'notifyx'
     };
   } catch (error) {
@@ -2741,6 +2879,8 @@ async function getConfig(env) {
       TG_BOT_TOKEN: '',
       TG_CHAT_ID: '',
       NOTIFYX_API_KEY: '',
+      WEBHOOK_URL: '',
+      WEBHOOK_SECRET: '',
       NOTIFICATION_TYPE: 'notifyx'
     };
   }
@@ -2749,13 +2889,13 @@ async function getConfig(env) {
 async function generateJWT(username, secret) {
   const header = { alg: 'HS256', typ: 'JWT' };
   const payload = { username, iat: Math.floor(Date.now() / 1000) };
-  
+
   const headerBase64 = btoa(JSON.stringify(header));
   const payloadBase64 = btoa(JSON.stringify(payload));
-  
+
   const signatureInput = headerBase64 + '.' + payloadBase64;
   const signature = await CryptoJS.HmacSHA256(signatureInput, secret);
-  
+
   return headerBase64 + '.' + payloadBase64 + '.' + signature;
 }
 
@@ -2763,13 +2903,13 @@ async function verifyJWT(token, secret) {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    
+
     const [headerBase64, payloadBase64, signature] = parts;
     const signatureInput = headerBase64 + '.' + payloadBase64;
     const expectedSignature = await CryptoJS.HmacSHA256(signatureInput, secret);
-    
+
     if (signature !== expectedSignature) return null;
-    
+
     const payload = JSON.parse(atob(payloadBase64));
     return payload;
   } catch (error) {
@@ -2781,14 +2921,14 @@ async function getAllSubscriptions(env) {
   try {
     const data = await env.SUBSCRIPTIONS_KV.get('subscriptions');
     let subscriptions = data ? JSON.parse(data) : [];
-    
+
     // Auto-fix empty purchase history for existing subscriptions
     let needsUpdate = false;
     subscriptions = subscriptions.map(subscription => {
       // Check if subscription has currentPlan data but empty purchaseHistory
-      if (subscription.currentPlan && 
-          (!subscription.purchaseHistory || subscription.purchaseHistory.length === 0)) {
-        
+      if (subscription.currentPlan &&
+        (!subscription.purchaseHistory || subscription.purchaseHistory.length === 0)) {
+
         // Create initial purchase record from currentPlan data
         const initialPurchase = {
           id: `purchase_${Date.now().toString()}_${Math.random().toString(36).slice(2, 11)}`,
@@ -2802,13 +2942,13 @@ async function getAllSubscriptions(env) {
           durationUnit: subscription.currentPlan.periodUnit || 'month',
           notes: 'Auto-generated from current plan data'
         };
-        
+
         // Initialize purchaseHistory with the initial purchase
         subscription.purchaseHistory = [initialPurchase];
         subscription.updatedAt = new Date().toISOString();
         needsUpdate = true;
       }
-      
+
       // 清理舊的匯率數據格式 - 移除完整的匯率數據，只保留必要信息
       if (subscription.currentPlan && subscription.currentPlan.exchangeRateAtPurchase) {
         const exchangeData = subscription.currentPlan.exchangeRateAtPurchase;
@@ -2824,15 +2964,15 @@ async function getAllSubscriptions(env) {
           needsUpdate = true;
         }
       }
-      
+
       return subscription;
     });
-    
+
     // Save updated subscriptions back to KV if any were modified
     if (needsUpdate) {
       await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
     }
-    
+
     return subscriptions;
   } catch (error) {
     return [];
@@ -2847,14 +2987,14 @@ async function getSubscription(id, env) {
 async function createSubscription(subscription, env) {
   try {
     const subscriptions = await getAllSubscriptions(env);
-    
+
     if (!subscription.name || !subscription.expiryDate) {
       return { success: false, message: '缺少必填字段' };
     }
-    
+
     let expiryDate = new Date(subscription.expiryDate);
     const now = new Date();
-    
+
     if (expiryDate < now && subscription.periodValue && subscription.periodUnit) {
       while (expiryDate < now) {
         if (subscription.periodUnit === 'day') {
@@ -2867,7 +3007,7 @@ async function createSubscription(subscription, env) {
       }
       subscription.expiryDate = expiryDate.toISOString();
     }
-    
+
     // 獲取當前匯率信息
     let exchangeRateInfo = null;
     if (subscription.currency && subscription.currency !== 'TWD') {
@@ -2886,7 +3026,7 @@ async function createSubscription(subscription, env) {
         console.log('獲取匯率失敗，但不影響訂閱創建');
       }
     }
-    
+
     const newSubscription = {
       id: Date.now().toString(),
       name: subscription.name,
@@ -2929,11 +3069,11 @@ async function createSubscription(subscription, env) {
       autoRenew: subscription.autoRenew !== false,
       createdAt: new Date().toISOString()
     };
-    
+
     subscriptions.push(newSubscription);
-    
+
     await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
-    
+
     return { success: true, subscription: newSubscription };
   } catch (error) {
     return { success: false, message: '創建訂閱失敗' };
@@ -2944,18 +3084,18 @@ async function updateSubscription(id, subscription, env) {
   try {
     const subscriptions = await getAllSubscriptions(env);
     const index = subscriptions.findIndex(s => s.id === id);
-    
+
     if (index === -1) {
       return { success: false, message: '訂閱不存在' };
     }
-    
+
     if (!subscription.name || !subscription.expiryDate) {
       return { success: false, message: '缺少必填字段' };
     }
-    
+
     let expiryDate = new Date(subscription.expiryDate);
     const now = new Date();
-    
+
     if (expiryDate < now && subscription.periodValue && subscription.periodUnit) {
       while (expiryDate < now) {
         if (subscription.periodUnit === 'day') {
@@ -2968,7 +3108,7 @@ async function updateSubscription(id, subscription, env) {
       }
       subscription.expiryDate = expiryDate.toISOString();
     }
-    
+
     // 初始化 currentPlan 如果不存在
     if (!subscriptions[index].currentPlan) {
       subscriptions[index].currentPlan = {
@@ -2981,13 +3121,13 @@ async function updateSubscription(id, subscription, env) {
         periodUnit: subscriptions[index].periodUnit || 'month'
       };
     }
-    
+
     // 檢查價格或貨幣是否有變化，如果有則獲取新匯率
     const currentPrice = subscriptions[index].currentPlan.price;
     const currentCurrency = subscriptions[index].currentPlan.currency;
     const newPrice = subscription.price !== undefined ? subscription.price : currentPrice;
     const newCurrency = subscription.currency || currentCurrency || 'TWD';
-    
+
     let exchangeRateInfo = subscriptions[index].currentPlan.exchangeRateAtPurchase;
     if ((newPrice !== currentPrice || newCurrency !== currentCurrency) && newCurrency !== 'TWD') {
       try {
@@ -3006,7 +3146,7 @@ async function updateSubscription(id, subscription, env) {
         console.log('獲取匯率失敗，但不影響訂閱更新');
       }
     }
-    
+
     subscriptions[index] = {
       ...subscriptions[index],
       name: subscription.name,
@@ -3027,12 +3167,12 @@ async function updateSubscription(id, subscription, env) {
       autoRenew: subscription.autoRenew !== undefined ? subscription.autoRenew : (subscriptions[index].autoRenew !== undefined ? subscriptions[index].autoRenew : true),
       updatedAt: new Date().toISOString()
     };
-    
+
     // 重新計算統計資訊
     subscriptions[index].statistics = calculateSubscriptionStatistics(subscriptions[index]);
-    
+
     await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
-    
+
     return { success: true, subscription: subscriptions[index] };
   } catch (error) {
     return { success: false, message: '更新訂閱失敗' };
@@ -3043,13 +3183,13 @@ async function deleteSubscription(id, env) {
   try {
     const subscriptions = await getAllSubscriptions(env);
     const filteredSubscriptions = subscriptions.filter(s => s.id !== id);
-    
+
     if (filteredSubscriptions.length === subscriptions.length) {
       return { success: false, message: '訂閱不存在' };
     }
-    
+
     await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(filteredSubscriptions));
-    
+
     return { success: true };
   } catch (error) {
     return { success: false, message: '删除訂閱失敗' };
@@ -3060,19 +3200,19 @@ async function toggleSubscriptionStatus(id, isActive, env) {
   try {
     const subscriptions = await getAllSubscriptions(env);
     const index = subscriptions.findIndex(s => s.id === id);
-    
+
     if (index === -1) {
       return { success: false, message: '訂閱不存在' };
     }
-    
+
     subscriptions[index] = {
       ...subscriptions[index],
       isActive: isActive,
       updatedAt: new Date().toISOString()
     };
-    
+
     await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
-    
+
     return { success: true, subscription: subscriptions[index] };
   } catch (error) {
     return { success: false, message: '更新訂閱狀態失敗' };
@@ -3086,7 +3226,7 @@ async function getSubscriptionPurchases(subscriptionId, env) {
     if (!subscription) {
       throw new Error('未找到該訂閱');
     }
-    
+
     return subscription.purchaseHistory || [];
   } catch (error) {
     throw new Error('獲取購買記錄失敗: ' + error.message);
@@ -3096,7 +3236,7 @@ async function getSubscriptionPurchases(subscriptionId, env) {
 async function getPurchase(purchaseId, env) {
   try {
     const subscriptions = await getAllSubscriptions(env);
-    
+
     for (const subscription of subscriptions) {
       if (subscription.purchaseHistory) {
         const purchase = subscription.purchaseHistory.find(p => p.id === purchaseId);
@@ -3105,7 +3245,7 @@ async function getPurchase(purchaseId, env) {
         }
       }
     }
-    
+
     throw new Error('購買記錄不存在');
   } catch (error) {
     throw new Error('獲取購買記錄失敗: ' + error.message);
@@ -3116,16 +3256,16 @@ async function createPurchase(subscriptionId, purchaseData, env) {
   try {
     const subscriptions = await getAllSubscriptions(env);
     const index = subscriptions.findIndex(sub => sub.id === subscriptionId);
-    
+
     if (index === -1) {
       return { success: false, message: '未找到該訂閱' };
     }
-    
+
     // 驗證必要字段
     if (!purchaseData.price || !purchaseData.currency || !purchaseData.platform) {
       return { success: false, message: '缺少必要字段: price, currency, platform' };
     }
-    
+
     // 創建新購買記錄
     const newPurchase = {
       id: `purchase_${subscriptionId}_${Date.now()}`,
@@ -3141,24 +3281,24 @@ async function createPurchase(subscriptionId, purchaseData, env) {
       durationUnit: purchaseData.durationUnit || 'month',
       notes: purchaseData.notes || ''
     };
-    
+
     // 初始化 purchaseHistory 如果不存在
     if (!subscriptions[index].purchaseHistory) {
       subscriptions[index].purchaseHistory = [];
     }
-    
+
     // 添加新購買記錄
     subscriptions[index].purchaseHistory.push(newPurchase);
-    
+
     // 重新計算統計資訊
     subscriptions[index].statistics = calculateSubscriptionStatistics(subscriptions[index]);
     subscriptions[index].updatedAt = new Date().toISOString();
-    
+
     // 保存到 KV
     await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: '購買記錄創建成功',
       purchase: newPurchase
     };
@@ -3173,7 +3313,7 @@ async function updatePurchase(purchaseId, purchaseData, env) {
     let foundPurchase = null;
     let subscriptionIndex = -1;
     let purchaseIndex = -1;
-    
+
     // 尋找購買記錄
     for (let i = 0; i < subscriptions.length; i++) {
       if (subscriptions[i].purchaseHistory) {
@@ -3186,11 +3326,11 @@ async function updatePurchase(purchaseId, purchaseData, env) {
         }
       }
     }
-    
+
     if (!foundPurchase) {
       return { success: false, message: '未找到該購買記錄' };
     }
-    
+
     // 更新購買記錄
     const updatedPurchase = {
       ...foundPurchase,
@@ -3198,18 +3338,18 @@ async function updatePurchase(purchaseId, purchaseData, env) {
       id: purchaseId, // 保持原 ID
       price: purchaseData.price ? parseFloat(purchaseData.price) : foundPurchase.price
     };
-    
+
     subscriptions[subscriptionIndex].purchaseHistory[purchaseIndex] = updatedPurchase;
-    
+
     // 重新計算統計資訊
     subscriptions[subscriptionIndex].statistics = calculateSubscriptionStatistics(subscriptions[subscriptionIndex]);
     subscriptions[subscriptionIndex].updatedAt = new Date().toISOString();
-    
+
     // 保存到 KV
     await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: '購買記錄更新成功',
       purchase: updatedPurchase
     };
@@ -3224,7 +3364,7 @@ async function deletePurchase(purchaseId, env) {
     let foundPurchase = null;
     let subscriptionIndex = -1;
     let purchaseIndex = -1;
-    
+
     // 尋找購買記錄
     for (let i = 0; i < subscriptions.length; i++) {
       if (subscriptions[i].purchaseHistory) {
@@ -3237,23 +3377,23 @@ async function deletePurchase(purchaseId, env) {
         }
       }
     }
-    
+
     if (!foundPurchase) {
       return { success: false, message: '未找到該購買記錄' };
     }
-    
+
     // 刪除購買記錄
     subscriptions[subscriptionIndex].purchaseHistory.splice(purchaseIndex, 1);
-    
+
     // 重新計算統計資訊
     subscriptions[subscriptionIndex].statistics = calculateSubscriptionStatistics(subscriptions[subscriptionIndex]);
     subscriptions[subscriptionIndex].updatedAt = new Date().toISOString();
-    
+
     // 保存到 KV
     await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(subscriptions));
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: '購買記錄刪除成功'
     };
   } catch (error) {
@@ -3273,13 +3413,13 @@ function calculateSubscriptionStatistics(subscription) {
       platforms: subscription.currentPlan?.platform ? [subscription.currentPlan.platform] : []
     };
   }
-  
+
   let totalSpent = 0;
   let totalMonths = 0;
   let bestDeal = null;
   let bestDealRate = Infinity;
   const platforms = new Set();
-  
+
   // 包含當前計劃
   if (subscription.currentPlan) {
     totalSpent += subscription.currentPlan.price || 0;
@@ -3288,17 +3428,17 @@ function calculateSubscriptionStatistics(subscription) {
       platforms.add(subscription.currentPlan.platform);
     }
   }
-  
+
   // 計算購買歷史
   subscription.purchaseHistory.forEach(purchase => {
     totalSpent += purchase.price || 0;
     const months = purchase.duration || 1;
     totalMonths += months;
-    
+
     if (purchase.platform) {
       platforms.add(purchase.platform);
     }
-    
+
     // 計算最划算的購買 (每月成本最低)
     const monthlyRate = (purchase.price || 0) / months;
     if (monthlyRate < bestDealRate) {
@@ -3306,7 +3446,7 @@ function calculateSubscriptionStatistics(subscription) {
       bestDeal = purchase.id;
     }
   });
-  
+
   return {
     totalSpent: parseFloat(totalSpent.toFixed(2)),
     totalMonths: totalMonths,
@@ -3329,19 +3469,29 @@ async function testSingleSubscriptionNotification(id, env) {
     const description = `這是一個對訂閱 "${subscription.name}" 的手動測試通知。`;
     let content = '';
 
+    // 服務器端台北時間格式化函數
+    function formatServerTaipeiDate(date) {
+      const taipeiOffset = 8 * 60; // UTC+8 in minutes
+      const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+      const taipeiTime = new Date(utc + (taipeiOffset * 60000));
+      return taipeiTime.toLocaleDateString('zh-TW');
+    }
+
     // 根據所選通知渠道格式化消息内容，与主提醒功能保持一致
     if (config.NOTIFICATION_TYPE === 'notifyx') {
-        content = `## ${title}\n\n**訂閱詳情**:\n- **類型**: ${subscription.customType || '其他'}\n- **到期日**: ${new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate).toLocaleDateString()}\n- **價格**: ${(subscription.currentPlan?.price || subscription.price) ? (subscription.currentPlan?.price || subscription.price).toFixed(2) + ' ' + (subscription.currentPlan?.currency || subscription.currency || 'TWD') : '未設定'}\n- **備注**: ${subscription.notes || '无'}`;
+      content = `## ${title}\n\n**訂閱詳情**:\n- **類型**: ${subscription.customType || '其他'}\n- **到期日**: ${formatServerTaipeiDate(new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate))}\n- **價格**: ${(subscription.currentPlan?.price || subscription.price) ? (subscription.currentPlan?.price || subscription.price).toFixed(2) + ' ' + (subscription.currentPlan?.currency || subscription.currency || 'TWD') : '未設定'}\n- **備注**: ${subscription.notes || '无'}`;
+    } else if (config.NOTIFICATION_TYPE === 'webhook') {
+      content = `訂閱詳情:\n- 類型: ${subscription.customType || '其他'}\n- 到期日: ${formatServerTaipeiDate(new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate))}\n- 價格: ${(subscription.currentPlan?.price || subscription.price) ? (subscription.currentPlan?.price || subscription.price).toFixed(2) + ' ' + (subscription.currentPlan?.currency || subscription.currency || 'TWD') : '未設定'}\n- 備注: ${subscription.notes || '无'}`;
     } else { // 默认 Telegram
-        content = `*${title}*\n\n**訂閱詳情**:\n- **類型**: ${subscription.customType || '其他'}\n- **到期日**: ${new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate).toLocaleDateString()}\n- **價格**: ${(subscription.currentPlan?.price || subscription.price) ? (subscription.currentPlan?.price || subscription.price).toFixed(2) + ' ' + (subscription.currentPlan?.currency || subscription.currency || 'TWD') : '未設定'}\n- **備注**: ${subscription.notes || '无'}`;
+      content = `*${title}*\n\n**訂閱詳情**:\n- **類型**: ${subscription.customType || '其他'}\n- **到期日**: ${formatServerTaipeiDate(new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate))}\n- **價格**: ${(subscription.currentPlan?.price || subscription.price) ? (subscription.currentPlan?.price || subscription.price).toFixed(2) + ' ' + (subscription.currentPlan?.currency || subscription.currency || 'TWD') : '未設定'}\n- **備注**: ${subscription.notes || '无'}`;
     }
 
     const success = await sendNotification(title, content, description, config);
 
     if (success) {
-        return { success: true, message: '測試通知已成功發送' };
+      return { success: true, message: '測試通知已成功發送' };
     } else {
-        return { success: false, message: '測試通知發送失敗，請檢查配置' };
+      return { success: false, message: '測試通知發送失敗，請檢查配置' };
     }
 
   } catch (error) {
@@ -3351,32 +3501,32 @@ async function testSingleSubscriptionNotification(id, env) {
 }
 
 async function sendWeComNotification() {
-    // This is a placeholder. In a real scenario, you would implement the WeCom notification logic here.
-    console.log("[企業微信] 通知功能未实现");
-    return { success: false, message: "企業微信通知功能未实现" };
+  // This is a placeholder. In a real scenario, you would implement the WeCom notification logic here.
+  console.log("[企業微信] 通知功能未实现");
+  return { success: false, message: "企業微信通知功能未实现" };
 }
 
 async function sendNotificationToAllChannels(title, commonContent, config, logPrefix = '[定時任務]') {
-    if (!config.ENABLED_NOTIFIERS || config.ENABLED_NOTIFIERS.length === 0) {
-        console.log(`${logPrefix} 未啟用任何通知渠道。`);
-        return;
-    }
+  if (!config.ENABLED_NOTIFIERS || config.ENABLED_NOTIFIERS.length === 0) {
+    console.log(`${logPrefix} 未啟用任何通知渠道。`);
+    return;
+  }
 
-    if (config.ENABLED_NOTIFIERS.includes('notifyx')) {
-        const notifyxContent = `## ${title}\n\n${commonContent}`;
-        const success = await sendNotifyXNotification(title, notifyxContent, `訂閱提醒`, config);
-        console.log(`${logPrefix} 發送NotifyX通知 ${success ? '成功' : '失敗'}`);
-    }
-    if (config.ENABLED_NOTIFIERS.includes('telegram')) {
-        const telegramContent = `*${title}*\n\n${commonContent.replace(/(\s)/g, ' ')}`;
-        const success = await sendTelegramNotification(telegramContent, config);
-        console.log(`${logPrefix} 發送Telegram通知 ${success ? '成功' : '失敗'}`);
-    }
-    if (config.ENABLED_NOTIFIERS.includes('weixin')) {
-        const weixinContent = `【${title}】\n\n${commonContent.replace(/(\**|\*|##|#|`)/g, '')}`;
-        const result = await sendWeComNotification(weixinContent, config);
-        console.log(`${logPrefix} 發送企業微信通知 ${result.success ? '成功' : '失敗'}. ${result.message}`);
-    }
+  if (config.ENABLED_NOTIFIERS.includes('notifyx')) {
+    const notifyxContent = `## ${title}\n\n${commonContent}`;
+    const success = await sendNotifyXNotification(title, notifyxContent, `訂閱提醒`, config);
+    console.log(`${logPrefix} 發送NotifyX通知 ${success ? '成功' : '失敗'}`);
+  }
+  if (config.ENABLED_NOTIFIERS.includes('telegram')) {
+    const telegramContent = `*${title}*\n\n${commonContent.replace(/(\s)/g, ' ')}`;
+    const success = await sendTelegramNotification(telegramContent, config);
+    console.log(`${logPrefix} 發送Telegram通知 ${success ? '成功' : '失敗'}`);
+  }
+  if (config.ENABLED_NOTIFIERS.includes('weixin')) {
+    const weixinContent = `【${title}】\n\n${commonContent.replace(/(\**|\*|##|#|`)/g, '')}`;
+    const result = await sendWeComNotification(weixinContent, config);
+    console.log(`${logPrefix} 發送企業微信通知 ${result.success ? '成功' : '失敗'}. ${result.message}`);
+  }
 }
 
 async function sendTelegramNotification(message, config) {
@@ -3385,9 +3535,9 @@ async function sendTelegramNotification(message, config) {
       console.error('[Telegram] 通知未配置，缺少Bot Token或Chat ID');
       return false;
     }
-    
+
     console.log('[Telegram] 開始發送通知到 Chat ID: ' + config.TG_CHAT_ID);
-    
+
     const url = 'https://api.telegram.org/bot' + config.TG_BOT_TOKEN + '/sendMessage';
     const response = await fetch(url, {
       method: 'POST',
@@ -3398,7 +3548,7 @@ async function sendTelegramNotification(message, config) {
         parse_mode: 'Markdown'
       })
     });
-    
+
     const result = await response.json();
     console.log('[Telegram] 發送结果:', result);
     return result.ok;
@@ -3414,9 +3564,9 @@ async function sendNotifyXNotification(title, content, description, config) {
       console.error('[NotifyX] 通知未配置，缺少API Key');
       return false;
     }
-    
+
     console.log('[NotifyX] 開始發送通知: ' + title);
-    
+
     const url = 'https://www.notifyx.cn/api/v1/send/' + config.NOTIFYX_API_KEY;
     const response = await fetch(url, {
       method: 'POST',
@@ -3427,7 +3577,7 @@ async function sendNotifyXNotification(title, content, description, config) {
         description: description || ''
       })
     });
-    
+
     const result = await response.json();
     console.log('[NotifyX] 發送结果:', result);
     return result.status === 'queued';
@@ -3437,9 +3587,54 @@ async function sendNotifyXNotification(title, content, description, config) {
   }
 }
 
+async function sendWebhookNotification(title, content, description, config) {
+  try {
+    if (!config.WEBHOOK_URL) {
+      console.error('[Webhook] 通知未配置，缺少 Webhook URL');
+      return false;
+    }
+
+    console.log('[Webhook] 開始發送通知到: ' + config.WEBHOOK_URL);
+
+    const payload = {
+      title: title,
+      content: content,
+      description: description || '',
+      timestamp: toTaipeiISOString(),
+      source: 'SubsTracker'
+    };
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'SubsTracker/1.0'
+    };
+
+    // 如果提供了 secret，添加簽名
+    if (config.WEBHOOK_SECRET) {
+      const message = JSON.stringify(payload);
+      const signature = await generateHmacSignature(message, config.WEBHOOK_SECRET);
+      headers['X-Webhook-Signature'] = 'sha256=' + signature;
+    }
+
+    const response = await fetch(config.WEBHOOK_URL, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(payload)
+    });
+
+    console.log('[Webhook] 發送结果:', response.status, response.statusText);
+    return response.ok;
+  } catch (error) {
+    console.error('[Webhook] 發送通知失敗:', error);
+    return false;
+  }
+}
+
 async function sendNotification(title, content, description, config) {
   if (config.NOTIFICATION_TYPE === 'notifyx') {
     return await sendNotifyXNotification(title, content, description, config);
+  } else if (config.NOTIFICATION_TYPE === 'webhook') {
+    return await sendWebhookNotification(title, content, description, config);
   } else {
     return await sendTelegramNotification(content, config);
   }
@@ -3449,31 +3644,31 @@ async function sendNotification(title, content, description, config) {
 async function checkExpiringSubscriptions(env) {
   try {
     console.log('[定時任務] 開始檢查即將到期的訂閱: ' + new Date().toISOString());
-    
+
     const subscriptions = await getAllSubscriptions(env);
     console.log('[定時任務] 共找到 ' + subscriptions.length + ' 個訂閱');
-    
+
     const config = await getConfig(env);
     const now = new Date();
     const expiringSubscriptions = [];
     const updatedSubscriptions = [];
     let hasUpdates = false;
-    
+
     for (const subscription of subscriptions) {
       if (subscription.isActive === false) {
         console.log('[定時任務] 訂閱 "' + subscription.name + '" 已停用，跳過');
         continue;
       }
-      
+
       const expiryDate = new Date(subscription.currentPlan?.expiryDate || subscription.expiryDate);
       const daysDiff = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
-      
+
       console.log('[定時任務] 訂閱 "' + subscription.name + '" 到期日期: ' + expiryDate.toISOString() + ', 剩餘天數: ' + daysDiff);
-      
+
       // 修复提前提醒天數逻辑
       const reminderDays = subscription.reminderDays !== undefined ? subscription.reminderDays : 7;
       let shouldRemind = false;
-      
+
       if (reminderDays === 0) {
         // 当提前提醒天數為0時，只在到期日当天提醒
         shouldRemind = daysDiff === 0;
@@ -3481,13 +3676,13 @@ async function checkExpiringSubscriptions(env) {
         // 当提前提醒天數大於0時，在指定范圍内提醒
         shouldRemind = daysDiff >= 0 && daysDiff <= reminderDays;
       }
-      
+
       // 如果已過期，且設置了周期和自動續訂，则自動更新到下一個周期
       if (daysDiff < 0 && subscription.periodValue && subscription.periodUnit && subscription.autoRenew !== false) {
         console.log('[定時任務] 訂閱 "' + subscription.name + '" 已過期且啟用自動續訂，正在更新到下一個周期');
-        
+
         const newExpiryDate = new Date(expiryDate);
-        
+
         if (subscription.periodUnit === 'day') {
           newExpiryDate.setDate(expiryDate.getDate() + subscription.periodValue);
         } else if (subscription.periodUnit === 'month') {
@@ -3495,10 +3690,10 @@ async function checkExpiringSubscriptions(env) {
         } else if (subscription.periodUnit === 'year') {
           newExpiryDate.setFullYear(expiryDate.getFullYear() + subscription.periodValue);
         }
-        
+
         while (newExpiryDate < now) {
           console.log('[定時任務] 新计算的到期日期 ' + newExpiryDate.toISOString() + ' 仍然過期，继續计算下一個周期');
-          
+
           if (subscription.periodUnit === 'day') {
             newExpiryDate.setDate(newExpiryDate.getDate() + subscription.periodValue);
           } else if (subscription.periodUnit === 'month') {
@@ -3507,28 +3702,53 @@ async function checkExpiringSubscriptions(env) {
             newExpiryDate.setFullYear(newExpiryDate.getFullYear() + subscription.periodValue);
           }
         }
-        
+
         console.log('[定時任務] 訂閱 "' + subscription.name + '" 更新到期日期: ' + newExpiryDate.toISOString());
-        
-        const updatedSubscription = { 
-          ...subscription, 
+
+        // 創建新的購買記錄
+        const newPurchaseRecord = {
+          id: `purchase_${subscription.id}_${Date.now()}`,
+          purchaseDate: now.toISOString().split('T')[0],
+          startDate: subscription.currentPlan.expiryDate.split('T')[0],
+          endDate: newExpiryDate.toISOString().split('T')[0],
+          price: subscription.currentPlan.price || 0,
+          currency: subscription.currentPlan.currency || 'TWD',
+          originalPrice: subscription.currentPlan.originalPrice || null,
+          originalCurrency: subscription.currentPlan.originalCurrency || null,
+          platform: subscription.currentPlan.platform || '未指定',
+          duration: subscription.currentPlan.periodValue || 1,
+          durationUnit: subscription.currentPlan.periodUnit || 'month',
+          notes: '自動續訂'
+        };
+
+        // 更新購買歷史
+        const updatedPurchaseHistory = [...(subscription.purchaseHistory || []), newPurchaseRecord];
+
+        const updatedSubscription = {
+          ...subscription,
           currentPlan: {
             ...subscription.currentPlan,
+            startDate: subscription.currentPlan.expiryDate.split('T')[0],
             expiryDate: newExpiryDate.toISOString()
-          }
+          },
+          purchaseHistory: updatedPurchaseHistory
         };
+
+        // 重新計算統計數據
+        updatedSubscription.statistics = calculateSubscriptionStatistics(updatedSubscription);
+
         updatedSubscriptions.push(updatedSubscription);
         hasUpdates = true;
-        
+
         const newDaysDiff = Math.ceil((newExpiryDate - now) / (1000 * 60 * 60 * 24));
-        
+
         let shouldRemindAfterRenewal = false;
         if (reminderDays === 0) {
           shouldRemindAfterRenewal = newDaysDiff === 0;
         } else {
           shouldRemindAfterRenewal = newDaysDiff >= 0 && newDaysDiff <= reminderDays;
         }
-        
+
         if (shouldRemindAfterRenewal) {
           console.log('[定時任務] 訂閱 "' + subscription.name + '" 在提醒范圍内，將發送通知');
           expiringSubscriptions.push({
@@ -3550,29 +3770,29 @@ async function checkExpiringSubscriptions(env) {
         });
       }
     }
-    
+
     if (hasUpdates) {
       console.log('[定時任務] 有 ' + updatedSubscriptions.length + ' 個訂閱需要更新到下一個周期');
-      
+
       const mergedSubscriptions = subscriptions.map(sub => {
         const updated = updatedSubscriptions.find(u => u.id === sub.id);
         return updated || sub;
       });
-      
+
       await env.SUBSCRIPTIONS_KV.put('subscriptions', JSON.stringify(mergedSubscriptions));
       console.log('[定時任務] 已更新訂閱列表');
     }
-    
+
     if (expiringSubscriptions.length > 0) {
       console.log('[定時任務] 有 ' + expiringSubscriptions.length + ' 個訂閱需要發送通知');
-      
+
       let commonContent = '';
       expiringSubscriptions.sort((a, b) => a.daysRemaining - b.daysRemaining);
 
       for (const sub of expiringSubscriptions) {
         const typeText = sub.customType || '其他';
-        const periodText = (sub.periodValue && sub.periodUnit) ? `(周期: ${sub.periodValue} ${ { day: '天', month: '月', year: '年' }[sub.periodUnit] || sub.periodUnit})` : '';
-        
+        const periodText = (sub.periodValue && sub.periodUnit) ? `(周期: ${sub.periodValue} ${{ day: '天', month: '月', year: '年' }[sub.periodUnit] || sub.periodUnit})` : '';
+
         let statusText;
         if (sub.daysRemaining === 0) statusText = `⚠️ **${sub.name}** (${typeText}) ${periodText} 今天到期！`;
         else if (sub.daysRemaining < 0) statusText = `🚨 **${sub.name}** (${typeText}) ${periodText} 已過期 ${Math.abs(sub.daysRemaining)} 天`;
@@ -3582,13 +3802,13 @@ async function checkExpiringSubscriptions(env) {
         if (sub.currentPlan?.price || sub.price) statusText += `\n   價格: ${(sub.currentPlan?.price || sub.price).toFixed(2)} ${sub.currentPlan?.currency || sub.currency || 'TWD'}`;
         commonContent += statusText + '\n\n';
       }
-      
+
       await sendNotificationToAllChannels(title, commonContent, config, logPrefix);
 
     } else {
       console.log('[定時任務] 没有需要提醒的訂閱');
     }
-    
+
     console.log('[定時任務] 檢查完成');
   } catch (error) {
     console.error('[定時任務] 檢查即將到期的訂閱失敗:', error);
@@ -3597,21 +3817,21 @@ async function checkExpiringSubscriptions(env) {
 
 function getCookieValue(cookieString, key) {
   if (!cookieString) return null;
-  
+
   const match = cookieString.match(new RegExp('(^| )' + key + '=([^;]+)'));
   return match ? match[2] : null;
 }
 
 async function handleRequest(request) {
   const url = new URL(request.url);
-  
+
   // 處理詳情頁面
   if (url.pathname === '/details') {
     return new Response(detailsPage, {
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
     });
   }
-  
+
   // 默認返回登錄頁面
   return new Response(loginPage, {
     headers: { 'Content-Type': 'text/html; charset=utf-8' }
@@ -3619,15 +3839,15 @@ async function handleRequest(request) {
 }
 
 const CryptoJS = {
-  HmacSHA256: function(message, key) {
+  HmacSHA256: function (message, key) {
     const keyData = new TextEncoder().encode(key);
     const messageData = new TextEncoder().encode(message);
-    
+
     return Promise.resolve().then(() => {
       return crypto.subtle.importKey(
-        "raw", 
+        "raw",
         keyData,
-        { name: "HMAC", hash: {name: "SHA-256"} },
+        { name: "HMAC", hash: { name: "SHA-256" } },
         false,
         ["sign"]
       );
@@ -3644,10 +3864,38 @@ const CryptoJS = {
   }
 };
 
+async function generateHmacSignature(message, secret) {
+  return await CryptoJS.HmacSHA256(message, secret);
+}
+
+// 台北時間轉換函數
+function toTaipeiTime(date = new Date()) {
+  const taipeiOffset = 8 * 60; // UTC+8 in minutes
+  const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+  return new Date(utc + (taipeiOffset * 60000));
+}
+
+// 格式化台北時間
+function formatTaipeiTime(date = new Date(), options = {}) {
+  const taipeiTime = toTaipeiTime(date);
+  if (options.dateOnly) {
+    return taipeiTime.toLocaleDateString('zh-TW');
+  } else if (options.timeOnly) {
+    return taipeiTime.toLocaleTimeString('zh-TW');
+  } else {
+    return taipeiTime.toLocaleString('zh-TW');
+  }
+}
+
+// 取得台北時間的ISO字串
+function toTaipeiISOString(date = new Date()) {
+  return toTaipeiTime(date).toISOString();
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    
+
     if (url.pathname.startsWith('/api')) {
       return api.handleRequest(request, env, ctx);
     } else if (url.pathname.startsWith('/admin')) {
@@ -3656,9 +3904,9 @@ export default {
       return handleRequest(request);
     }
   },
-  
+
   async scheduled(_event, env) {
-    console.log('[Workers] 定時任務觸發時間:', new Date().toISOString());
+    console.log('[Workers] 定時任務觸發時間:', formatTaipeiTime());
     await checkExpiringSubscriptions(env);
   }
 };
